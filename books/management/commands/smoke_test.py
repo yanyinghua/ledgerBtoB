@@ -52,7 +52,13 @@ class Command(BaseCommand):
         self.stdout.write(f'  [OK] {label}')
 
     def _csrf_client(self):
-        return Client(enforce_csrf_checks=False)
+        # 用一个确定在 ALLOWED_HOSTS 里的主机名，避免依赖 test Client 默认的
+        # "testserver"（生产环境 ALLOWED_HOSTS 通常不含它，会返回 400）。
+        from django.conf import settings
+        host = (getattr(settings, 'ALLOWED_HOSTS', None) or ['localhost'])[0]
+        if host in ('*', ''):
+            host = 'localhost'
+        return Client(enforce_csrf_checks=False, SERVER_NAME=host)
 
     def _phone(self):
         return '139' + ''.join(random.choice('0123456789') for _ in range(8))
