@@ -1,0 +1,23 @@
+{% extends 'books/base.html' %}
+{% block title %}{{ title }} - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>{{ title }}</h5>
+{% if object %}<p class="text-muted small">当前记录：{{ object }}</p>{% endif %}
+<div class="card shadow-sm" style="max-width:620px">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="mb-3">
+          {{ field.label_tag }}
+          {{ field }}
+          {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+          {% if field.errors %}<div class="text-danger small">{{ field.errors }}</div>{% endif %}
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary">保存</button>
+      <a class="btn btn-outline-secondary" href="{% url back %}">取消</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}承兑收付款统计报表 - 往来账管理系统{% endblock %}
+{% block content %}
+<style media="print">
+  .no-print { display: none !important; }
+  .table { font-size: 12px; }
+</style>
+<div class="no-print">
+  <h5>承兑收付款统计报表</h5>
+  <p class="text-muted small mb-2">按期间统计承兑汇票的收款、付款与期末库存余额（库存余额＝收款−付款的累计）。迪链并入同一来源，可用「类型」筛选区分。</p>
+
+  <form method="get" class="card shadow-sm mb-3">
+    <div class="card-body row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <label class="form-label">类型</label>
+        <select name="kind" class="form-select">
+          <option value="">全部</option>
+          {% for v, l in kinds %}<option value="{{ v }}" {% if filters.kind == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">统计维度</label>
+        <select name="dim" class="form-select">
+          <option value="month" {% if dim == 'month' %}selected{% endif %}>按月</option>
+          <option value="year" {% if dim == 'year' %}selected{% endif %}>按年</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">年份</label>
+        <select name="year" class="form-select">
+          <option value="">全部</option>
+          {% for y in years %}<option value="{{ y }}" {% if filters.year == y|stringformat:'i' %}selected{% endif %}>{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2 d-grid"><button class="btn btn-primary">查询</button></div>
+      <div class="col-6 col-md-2 d-grid">
+        <a class="btn btn-success" href="{% url 'acceptance_report_export' %}?{{ querystring }}">导出 Excel</a>
+      </div>
+      <div class="col-6 col-md-2 d-grid">
+        <button class="btn btn-outline-secondary" type="button" onclick="window.print()">打印</button>
+      </div>
+    </div>
+  </form>
+
+  <form method="post" action="{% url 'acceptance_report_set_opening' %}" class="card shadow-sm mb-3 border-warning">
+    <div class="card-body row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-12 col-md-12"><div class="text-warning small">设置承兑汇票期初库存余额（期末余额将以该金额为起点滚动）</div></div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">期初日期</label>
+        <input type="date" name="as_of_date" class="form-control" value="{{ opening.as_of_date|date:'Y-m-d'|default:'' }}" required>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label">期初库存余额</label>
+        <input type="number" step="0.01" name="amount" class="form-control" value="{{ opening.amount|default:'' }}" placeholder="可为负">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label">备注</label>
+        <input type="text" name="remark" class="form-control" value="{{ opening.remark|default:'' }}" placeholder="可选">
+      </div>
+      <div class="col-6 col-md-2 d-grid"><button class="btn btn-warning">保存期初余额</button></div>
+    </div>
+  </form>
+</div>
+
+{% if opening %}
+<div class="alert alert-info py-2 small mb-2">
+  当前承兑期初库存余额：<strong>{{ opening.amount|cny }}</strong>（截至 {{ opening.as_of_date|date:'Y-m-d' }}）{% if opening.remark %} ｜ {{ opening.remark }}{% endif %}
+</div>
+{% endif %}
+
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "period" "期间" %}</th>
+        <th class="text-end">{% sort_link sort "recv" "收款" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "pay" "付款" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "net" "当期净额" "desc" %}</th>
+        <th class="text-end" title="期末库存余额按期间累计，不随排序改变">期末库存余额</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.label }}</td>
+        <td class="text-end">{{ r.recv|cny }}</td>
+        <td class="text-end">{{ r.pay|cny }}</td>
+        <td class="text-end {% if r.net < 0 %}text-danger{% endif %}">{{ r.net|cny }}</td>
+        <td class="text-end {% if r.balance < 0 %}text-danger{% endif %}">{{ r.balance|cny }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center text-muted">暂无票据记录（请先以来源类型「承兑汇票」导入承兑或迪链文件）</td></tr>
+      {% endfor %}
+      {% if rows %}
+      <tr class="table-info">
+        <td>合计</td>
+        <td class="text-end">{{ totals.recv|cny }}</td>
+        <td class="text-end">{{ totals.pay|cny }}</td>
+        <td class="text-end {% if totals.net < 0 %}text-danger{% endif %}">{{ totals.net|cny }}</td>
+        <td class="text-end {% if totals.balance < 0 %}text-danger{% endif %}">{{ totals.balance|cny }}</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

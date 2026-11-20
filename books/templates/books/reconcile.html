@@ -1,0 +1,179 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}对账单管理 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>对账单管理</h5>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label">客户名称</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}" placeholder="输入或选择客户">
+      <datalist id="unitlist">{% for u in unit_choices %}<option value="{{ u }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">年份</label>
+      <input name="year" class="form-control" value="{{ filters.year }}" placeholder="如 2024">
+    </div>
+    <div class="col-3 col-md-1">
+      <label class="form-label">起(月)</label>
+      <input name="month_start" class="form-control" value="{{ filters.month_start }}" placeholder="1">
+    </div>
+    <div class="col-3 col-md-1">
+      <label class="form-label">止(月)</label>
+      <input name="month_end" class="form-control" value="{{ filters.month_end }}" placeholder="12">
+    </div>
+    <div class="col-12 col-md-2 d-grid"><button class="btn btn-primary">生成对账单</button></div>
+  </div>
+</form>
+
+{% if data %}
+<div class="card shadow-sm mb-2">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center no-print mb-2">
+      <div class="text-muted small">对账期间：{{ data.year }}年{{ data.ms|stringformat:'02d' }}月 - {{ data.year }}年{{ data.me|stringformat:'02d' }}月</div>
+      <div>
+        <form method="post" action="{% url 'reconcile_issue' %}" class="d-inline">
+          {% csrf_token %}
+          <input type="hidden" name="unit_name" value="{{ filters.unit_name }}">
+          <input type="hidden" name="year" value="{{ filters.year }}">
+          <input type="hidden" name="month_start" value="{{ filters.month_start }}">
+          <input type="hidden" name="month_end" value="{{ filters.month_end }}">
+          <button class="btn btn-primary btn-sm" type="submit">出具编号</button>
+        </form>
+        <a class="btn btn-success btn-sm" href="{% url 'reconcile_export' %}?unit_name={{ filters.unit_name|urlencode }}&year={{ filters.year }}&month_start={{ filters.month_start }}&month_end={{ filters.month_end }}">导出 Excel</a>
+        <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">打印</button>
+      </div>
+    </div>
+
+    <h4 class="text-center mb-2 letter-title">往来对账函</h4>
+    <div class="letter-meta">
+      <span>编号：{% if data.letter_no %}{{ data.letter_no }}{% else %}（未出具，点「出具编号」生成）{% endif %}</span>
+      <span>对账期间：{{ data.year }}年{{ data.ms|stringformat:'02d' }}月 - {{ data.year }}年{{ data.me|stringformat:'02d' }}月</span>
+    </div>
+    <div class="mb-3">致：<b>{{ data.unit }}</b></div>
+    <p class="letter-intro">下列数据系本单位与贵公司往来账款记录，请贵公司予以核对，并将核对结果在下述相应栏内加盖公章后回传，谢谢合作！</p>
+
+    <table class="reconcile-table">
+      <colgroup>
+        <col style="width:13%"><col style="width:15.5%"><col style="width:16.5%"><col style="width:16.5%"><col style="width:16.5%"><col style="width:22%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>{% sort_link sort "date" "日期" "desc" %}</th>
+          <th>{% sort_link sort "biz_type" "业务类别" %}</th>
+          <th class="num">{% sort_link sort "debit" "借方金额" "desc" %}</th>
+          <th class="num">{% sort_link sort "credit" "贷方金额" "desc" %}</th>
+          <th class="num" title="余额按发生日累计，不随排序改变">余额</th>
+          <th class="inv-col">{% sort_link sort "invoice_no" "发票号" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="row-open">
+          <td>期初余额</td><td></td><td class="num"></td><td class="num"></td>
+          <td class="num">{{ data.opening|cny }}</td><td></td>
+        </tr>
+        {% for r in data.rows %}
+        <tr>
+          <td>{{ r.date|date:'Y-m-d'|default:'' }}</td>
+          <td>{{ r.biz_type }}{% if r.category %}（{{ r.category }}）{% endif %}</td>
+          <td class="num">{{ r.debit|cny }}</td>
+          <td class="num">{{ r.credit|cny }}</td>
+          <td class="num">{{ r.balance|cny }}</td>
+          <td class="inv-col">{% if r.invoice_no %}<a href="{% url 'invoice_detail' r.id %}" target="_blank" rel="noopener" title="查看该发票货物明细">{{ r.invoice_no }}</a>{% else %}{{ r.invoice_no }}{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted">本期无发生额</td></tr>
+        {% endfor %}
+        <tr class="row-total">
+          <td>合计</td><td></td>
+          <td class="num">{{ data.tot_d|cny }}</td>
+          <td class="num">{{ data.tot_c|cny }}</td>
+          <td class="num">{{ data.ending|cny }}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="mt-4 cnf">
+      <p class="cnf-title">一、核对相符</p>
+      <p class="cnf-line">贵公司确认上述往来账目记录与贵公司账面相符。</p>
+      <div class="sign-row">
+        <span>客户名称（盖章）：________________________</span>
+        <span>核对人：______________</span>
+        <span>日期：______年____月____日</span>
+      </div>
+
+      <p class="cnf-title mt-4">二、核对不相符</p>
+      <p class="cnf-line">如贵公司账面与上述记录不符，请列明差异：</p>
+      <p class="cnf-line">差异说明：</p>
+      <div class="diff-box"></div>
+      <div class="sign-row mt-2">
+        <span>客户名称（盖章）：________________________</span>
+        <span>核对人：______________</span>
+        <span>日期：______年____月____日</span>
+      </div>
+    </div>
+
+    <div class="mt-4 sender text-end">
+      <p>本单位（盖章）：________________________</p>
+      <p>经手人：______________ &nbsp;&nbsp;&nbsp; 日期：______年____月____日</p>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info">请选择客户名称与对账期间，生成对账单。</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .letter-title { letter-spacing: 4px; }
+  .letter-meta { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; }
+  .letter-intro { font-size: 14px; line-height: 1.8; margin-bottom: 8px; }
+
+  /* 固定宽度对账明细表：缩小字体、允许折行，确保内容（如长发票号）完整显示不截断 */
+  table.reconcile-table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.reconcile-table th, table.reconcile-table td {
+    border: 1px solid #333;
+    padding: 3px 5px;
+    white-space: normal;          /* 允许折行，内容完整显示 */
+    word-break: break-all;        /* 超长连续串（如数电票长发票号）也能断行显示全 */
+    height: auto;
+    vertical-align: middle;
+  }
+  table.reconcile-table th { text-align: center; background: #f2f2f2; }
+  table.reconcile-table th.num, table.reconcile-table td.num { text-align: right; }
+  table.reconcile-table tr.row-open td, table.reconcile-table tr.row-total td { font-weight: bold; background: #fafafa; }
+
+  .cnf-title { font-weight: bold; font-size: 15px; margin-bottom: 4px; }
+  .cnf-line { font-size: 14px; margin-bottom: 4px; }
+  .sign-row { display: flex; flex-wrap: wrap; gap: 24px; font-size: 14px; }
+  .diff-box { border-bottom: 1px solid #000; min-height: 56px; margin: 2px 0 4px; }
+  .sender { font-size: 14px; text-align: right; }
+
+  @media print {
+    .no-print, .navbar, .alert, form { display: none !important; }
+    body { background: #fff; }
+    .card { box-shadow: none !important; border: none; }
+    @page { size: A4; margin: 16mm; }
+    table.reconcile-table th, table.reconcile-table td { font-size: 10px; }
+    /* 发票号列单独缩小，便于长发票号单行容纳（特异性高于上一条以覆盖） */
+    table.reconcile-table th.inv-col, table.reconcile-table td.inv-col { font-size: 9.5px; }
+    .diff-box { min-height: 56px; }
+
+    /* 打印分页控制 */
+    table.reconcile-table thead { display: table-header-group; }   /* 跨页时每页重复表头 */
+    table.reconcile-table tr { break-inside: avoid; page-break-inside: avoid; }  /* 单行不被截断 */
+    .cnf, .sign-row, .diff-box, .sender { break-inside: avoid; page-break-inside: avoid; }  /* 核对/落款块保持完整 */
+    .cnf-title { break-after: avoid; page-break-after: avoid; }   /* 小节标题不孤立在页尾 */
+    .letter-title, .letter-meta, .letter-intro { break-inside: avoid; }
+  }
+</style>
+{% endblock %}

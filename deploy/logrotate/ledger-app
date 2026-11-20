@@ -1,0 +1,25 @@
+# 往来账项目日志轮转（cron 包装脚本的日志，区别于 /etc/logrotate.d/ledger 的 gunicorn 日志）
+#
+# 覆盖 /srv/ledger/logs/ 下所有 *.log：备份日志（root 写）与增量导入日志（www 写）。
+# 注意：/etc/logrotate.d/ledger 已被 gunicorn 的 access/error/deploy 日志占用，本配置
+# 命名为 ledger-app 以免覆盖它；两者目标目录不同，互不冲突。
+#
+# 用 copytruncate 而非 create 的原因：两类日志属主不同（root / www），而各脚本都以
+# `>> "$(date +%Y-%m).log"` 按计算出的文件名追加。copytruncate 复制后原地清空，
+# 保留原文件的属主/权限/inode，脚本下一轮仍能正确追加；若用 create 会把属主统一改成
+# 配置指定的用户，反而破坏 www 侧日志的权限预期。
+#
+# monthly + rotate 12：每月轮转一次，最多保留 12 个压缩归档（约一年），磁盘占用有上限。
+#
+# su root root：logs/ 属主 www:www 且组可写（www 需写增量日志），logrotate 3.18+ 对
+# 组可写目录默认拒绝轮转，必须显式声明 su。以 root 运行可同时处理 root 属主的备份日志
+# 与 www 属主的增量日志；配合 copytruncate，原文件属主/权限/inode 不变，脚本照常追加。
+/srv/ledger/logs/*.log {
+    su root root
+    monthly
+    rotate 12
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

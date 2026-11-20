@@ -1,0 +1,47 @@
+{% extends 'books/base.html' %}
+{% load sortable %}
+{% block title %}客户-业务员映射 - 往来账管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">客户-业务员映射</h5>
+  {% if user_role == '管理员' %}<a class="btn btn-primary btn-sm" href="{% url 'customer_add' %}">+ 新增</a>{% endif %}
+</div>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "unit_name" "单位名称" %}</th>
+        <th>{% sort_link sort "salesperson" "业务员" %}</th>
+        <th>{% sort_link sort "is_current" "现任" "desc" %}</th>
+        <th>{% sort_link sort "source" "来源" %}</th>
+        <th>{% sort_link sort "effective_date" "生效日期" "desc" %}</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>
+          <a href="{% url 'statement' %}?unit_name={{ it.unit_name|urlencode }}" target="_blank" rel="noopener" title="查看该单位往来明细">{{ it.unit_name }}</a>
+          {% if it.unit_name in reminder_units %}<span class="badge bg-warning text-dark" title="业务员待更新提醒">⚠</span>{% endif %}
+        </td>
+        <td>{{ it.salesperson }}</td>
+        <td>{% if it.is_current %}<span class="badge bg-success">现任</span>{% else %}<span class="text-muted">历史</span>{% endif %}</td>
+        <td>{{ it.source }}</td>
+        <td>{{ it.effective_date|date:'Y-m-d'|default:'' }}</td>
+        <td>
+          {% if user_role == '管理员' %}
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'customer_edit' it.id %}">编辑</a>
+          <a class="btn btn-sm btn-outline-danger" href="{% url 'customer_delete' it.id %}">删除</a>
+          {% elif user_role == '业务员' and it.salesperson == my_salesperson %}
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'customer_edit' it.id %}">编辑账期</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

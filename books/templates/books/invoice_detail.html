@@ -1,0 +1,103 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}发票明细 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>发票明细（穿透查询）</h5>
+<p class="text-muted small">该张发票的原始全部字段与货物明细行。原始字段取自导入时留存的原始行；货物明细行解析自「信息汇总表」。</p>
+
+<div class="mb-3">
+  <a class="btn btn-outline-secondary btn-sm" href="{% if back_query %}{{ back_query }}{% else %}{% url 'invoice_search' %}{% endif %}">← 返回</a>
+  <a class="btn btn-outline-primary btn-sm" href="{% url 'statement' %}?unit_name={{ rec.unit_name|urlencode }}&year={{ rec.year }}">该客户往来明细</a>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header">主表记录（归一字段）</div>
+  <div class="card-body row g-2">
+    <div class="col-6 col-md-3"><div class="text-muted small">日期</div><div>{{ rec.occur_date|date:'Y-m-d'|default:'—' }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">单位名称</div><div>{{ rec.unit_name }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">业务类型</div><div>{{ rec.biz_type }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">发票状态/类别</div><div>{{ rec.category|default:'—' }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">借方</div><div>{{ rec.debit|cny }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">贷方</div><div>{{ rec.credit|cny }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">发票号</div><div>{{ rec.invoice_number|default:'—' }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">经手人</div><div>{{ rec.handler|default:'—' }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">标记</div><div>{{ rec.tag|default:'—' }}</div></div>
+    <div class="col-6 col-md-3"><div class="text-muted small">来源</div><div>{{ rec.get_source_type_display }}</div></div>
+    <div class="col-12"><div class="text-muted small">备注</div><div>{{ rec.remark|default:'—' }}</div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header">原始发票字段（全部）</div>
+  <div class="card-body">
+    {% if raw_fields %}
+    <div class="row g-2">
+      {% for k, v in raw_fields %}
+      <div class="col-6 col-md-4 col-lg-3">
+        <div class="text-muted small">{{ k }}</div>
+        <div>{{ v|default:'—' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">无关联原始行数据（raw_row 为空）。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header">货物明细行（{{ line_count }} 行）</div>
+  <div class="card-body p-0">
+    {% if line_items %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>序号</th>
+            <th>{% sort_link sort "goods_name" "货物或应税劳务名称" %}</th>
+            <th>{% sort_link sort "spec" "规格型号" %}</th>
+            <th>{% sort_link sort "unit" "单位" %}</th>
+            <th class="text-end">{% sort_link sort "quantity" "数量" "desc" %}</th>
+            <th class="text-end">{% sort_link sort "price" "单价" "desc" %}</th>
+            <th class="text-end">含税单价</th>
+            <th class="text-end">{% sort_link sort "amount" "金额" "desc" %}</th>
+            <th class="text-end">价税合计</th>
+            <th>{% sort_link sort "tax_rate" "税率" %}</th>
+            <th class="text-end">{% sort_link sort "tax" "税额" "desc" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for li in line_items %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ li.goods_name|default:'—' }}</td>
+            <td>{{ li.spec|default:'—' }}</td>
+            <td>{{ li.unit|default:'—' }}</td>
+            <td class="text-end">{{ li.quantity|default:'' }}</td>
+            <td class="text-end">{{ li.price|cny }}</td>
+            <td class="text-end">{% if li.tax_included_price is not None %}{{ li.tax_included_price|cny }}{% else %}—{% endif %}</td>
+            <td class="text-end">{{ li.amount|cny }}</td>
+            <td class="text-end">{{ li.tax_included_total|cny }}</td>
+            <td>{{ li.tax_rate|default:'—' }}</td>
+            <td class="text-end">{{ li.tax|cny }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <td colspan="7" class="text-end">合计</td>
+            <td class="text-end">{{ line_items_total|cny }}</td>
+            <td class="text-end">{{ line_items_total_incl|cny }}</td>
+            <td></td>
+            <td class="text-end">{{ line_items_tax|cny }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted p-3 mb-0">该发票在「信息汇总表」中未匹配到货物明细行（可能原始导出未包含明细）。</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

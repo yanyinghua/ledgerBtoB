@@ -1,0 +1,34 @@
+{% extends 'books/base.html' %}
+{% block title %}导入数据 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>导入数据（管理员）</h5>
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">来源类型</label>
+        <select name="source_type" class="form-select" required>
+          <option value="">-- 请选择 --</option>
+          {% for v, l in source_types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Excel 文件（支持 .xlsx）</label>
+        <input type="file" name="file" class="form-control" accept=".xlsx" required>
+        <div class="form-text">发票含主表+明细表时会自动识别主表；若为 .xls 请另存为 .xlsx。</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">账户性质</label>
+        <select name="account_type" class="form-select">
+          <option value="">对公（默认）</option>
+          <option value="personal">个人</option>
+        </select>
+        <div class="form-text">选「个人」时，本批流水将打标记「个人」，便于与对公流水在报表/往来账中区分。</div>
+      </div>
+      <button type="submit" class="btn btn-primary">上传并导入</button>
+      <a href="{% url 'import_list' %}" class="btn btn-outline-secondary">导入记录</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

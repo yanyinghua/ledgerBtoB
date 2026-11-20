@@ -1,0 +1,1736 @@
+[
+  {
+    "model": "books.operator",
+    "pk": 1,
+    "fields": {
+      "key": "none",
+      "name": "原样",
+      "description": "不做任何转换，直接透传。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 2,
+    "fields": {
+      "key": "trim",
+      "name": "去首尾空白",
+      "description": "去掉字符串首尾空白。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 3,
+    "fields": {
+      "key": "fullwidth_brackets",
+      "name": "半角括号转全角",
+      "description": "将 () 转为全角（），并归一常见全角标点。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 4,
+    "fields": {
+      "key": "replace",
+      "name": "文本替换",
+      "description": "把单元格中的 find 替换为 replace。",
+      "params_schema": [
+        {
+          "name": "find",
+          "label": "查找",
+          "type": "str",
+          "default": ""
+        },
+        {
+          "name": "replace",
+          "label": "替换为",
+          "type": "str",
+          "default": ""
+        }
+      ]
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 5,
+    "fields": {
+      "key": "regex_extract",
+      "name": "正则提取",
+      "description": "用正则表达式从单元格提取片段（支持 group 参数指定分组）。",
+      "params_schema": [
+        {
+          "name": "pattern",
+          "label": "正则",
+          "type": "str",
+          "default": ""
+        },
+        {
+          "name": "group",
+          "label": "分组号",
+          "type": "int",
+          "default": 0
+        }
+      ]
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 6,
+    "fields": {
+      "key": "regex_salesperson",
+      "name": "提取业务员姓名",
+      "description": "去常见前缀（复核/经办/开票等）并取中文 2-4 字姓名。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 7,
+    "fields": {
+      "key": "to_date",
+      "name": "日期解析",
+      "description": "将多种格式日期解析为标准 ISO 日期字符串。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 8,
+    "fields": {
+      "key": "to_decimal",
+      "name": "金额解析",
+      "description": "去除货币符号/千分位/空格，解析为金额（Decimal）。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 9,
+    "fields": {
+      "key": "negate",
+      "name": "取负",
+      "description": "对金额取负（用于红字/冲减方向）。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 10,
+    "fields": {
+      "key": "abs",
+      "name": "绝对值",
+      "description": "对金额取绝对值。",
+      "params_schema": []
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 11,
+    "fields": {
+      "key": "lookup_name",
+      "name": "名称查表归一",
+      "description": "按原始名（或税号）查名称映射库，归一到规范名。",
+      "params_schema": [
+        {
+          "name": "use_tax_no",
+          "label": "使用税号查表",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "tax_no_column",
+          "label": "税号来源列",
+          "type": "str",
+          "default": "tax_no"
+        }
+      ]
+    }
+  },
+  {
+    "model": "books.operator",
+    "pk": 12,
+    "fields": {
+      "key": "constant",
+      "name": "置常量",
+      "description": "忽略原值，直接写入固定常量（用于固定类别等）。",
+      "params_schema": [
+        {
+          "name": "val",
+          "label": "常量值",
+          "type": "str",
+          "default": ""
+        }
+      ]
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 1,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购方名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 2,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "客户名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 3,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购买方名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 4,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购方单位名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 3
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 5,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购方纳税人识别号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 6,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购买方纳税人识别号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 7,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购方税号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 8,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "复核人",
+      "target_field": "handler",
+      "transform": "regex_salesperson",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 9,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "开票日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 10,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "填开日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 11,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 12,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "发票号码",
+      "target_field": "invoice_number",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 13,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "价税合计",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 14,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "金额",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 15,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "合计金额",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 16,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "备注",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 17,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "销方名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 18,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "供应商名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 19,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "销售方名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 20,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "供应单位",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 3
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 21,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "销方纳税人识别号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 22,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "销售方纳税人识别号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 23,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "销方税号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 24,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "复核人",
+      "target_field": "handler",
+      "transform": "regex_salesperson",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 25,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "经办人",
+      "target_field": "handler",
+      "transform": "regex_salesperson",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 26,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "开票日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 27,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 28,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "发票号码",
+      "target_field": "invoice_number",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 29,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "价税合计",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 30,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "金额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 31,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "备注",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 32,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "对方户名",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 33,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "对方名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 34,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "交易对手",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 35,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "收款人/付款人",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 3
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 36,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "交易日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 37,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "记账日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 38,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "业务日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 39,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "借方金额",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 40,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "支出金额",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 41,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "贷方金额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 42,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "收入金额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 43,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "摘要",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 44,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "用途",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 45,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "附言",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 46,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "交易对手名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 47,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "单位名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 10
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 48,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "交易日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 49,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "交易时间",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 10
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 50,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "票据出票日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 20
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 51,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "交易金额（元）",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 52,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "借方",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 10
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 53,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "贷方",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 54,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "操作类型",
+      "target_field": "category",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 55,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "分类",
+      "target_field": "category",
+      "transform": "none",
+      "is_active": true,
+      "order": 10
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 56,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "备注",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 205,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "业务员",
+      "target_field": "handler",
+      "transform": "regex_salesperson",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 57,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "交易对方",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 58,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "对方昵称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 59,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "交易对手",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 60,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "交易时间",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 61,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "交易日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 62,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "金额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 63,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "收/支",
+      "target_field": "category",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 64,
+    "fields": {
+      "source_type": "wechat",
+      "source_column": "备注",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 65,
+    "fields": {
+      "source_type": "other",
+      "source_column": "单位名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 66,
+    "fields": {
+      "source_type": "other",
+      "source_column": "对方名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 67,
+    "fields": {
+      "source_type": "other",
+      "source_column": "名称",
+      "target_field": "unit_name",
+      "transform": "fullwidth_brackets",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 68,
+    "fields": {
+      "source_type": "other",
+      "source_column": "发生时间",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 69,
+    "fields": {
+      "source_type": "other",
+      "source_column": "日期",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 70,
+    "fields": {
+      "source_type": "other",
+      "source_column": "借方金额",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 71,
+    "fields": {
+      "source_type": "other",
+      "source_column": "支出",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 72,
+    "fields": {
+      "source_type": "other",
+      "source_column": "贷方金额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 73,
+    "fields": {
+      "source_type": "other",
+      "source_column": "收入",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 74,
+    "fields": {
+      "source_type": "other",
+      "source_column": "经手人",
+      "target_field": "handler",
+      "transform": "regex_salesperson",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 75,
+    "fields": {
+      "source_type": "other",
+      "source_column": "业务员",
+      "target_field": "handler",
+      "transform": "regex_salesperson",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 76,
+    "fields": {
+      "source_type": "other",
+      "source_column": "类别",
+      "target_field": "category",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 77,
+    "fields": {
+      "source_type": "other",
+      "source_column": "备注",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 78,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "购方识别号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 79,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "开票人",
+      "target_field": "handler",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 80,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "销方识别号",
+      "target_field": "tax_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 81,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "交易时间",
+      "target_field": "occur_date",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 82,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "借方发生额",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 83,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "贷方发生额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 84,
+    "fields": {
+      "source_type": "other",
+      "source_column": "收入说明",
+      "target_field": "unit_name",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 85,
+    "fields": {
+      "source_type": "other",
+      "source_column": "收入金额",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 86,
+    "fields": {
+      "source_type": "other",
+      "source_column": "经办人",
+      "target_field": "handler",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 87,
+    "fields": {
+      "source_type": "other",
+      "source_column": "收入账户",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 88,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "发票状态",
+      "target_field": "category",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 89,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "发票状态",
+      "target_field": "category",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 1,
+    "fields": {
+      "mapping": 78,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 2,
+    "fields": {
+      "mapping": 3,
+      "op": 3,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 3,
+    "fields": {
+      "mapping": 9,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 4,
+    "fields": {
+      "mapping": 13,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 5,
+    "fields": {
+      "mapping": 79,
+      "op": 6,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 6,
+    "fields": {
+      "mapping": 16,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 7,
+    "fields": {
+      "mapping": 80,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 8,
+    "fields": {
+      "mapping": 17,
+      "op": 3,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 9,
+    "fields": {
+      "mapping": 26,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 10,
+    "fields": {
+      "mapping": 29,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 11,
+    "fields": {
+      "mapping": 31,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 12,
+    "fields": {
+      "mapping": 32,
+      "op": 3,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 13,
+    "fields": {
+      "mapping": 81,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 14,
+    "fields": {
+      "mapping": 82,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 15,
+    "fields": {
+      "mapping": 83,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 16,
+    "fields": {
+      "mapping": 43,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 17,
+    "fields": {
+      "mapping": 44,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 18,
+    "fields": {
+      "mapping": 84,
+      "op": 3,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 19,
+    "fields": {
+      "mapping": 85,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 20,
+    "fields": {
+      "mapping": 69,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 21,
+    "fields": {
+      "mapping": 86,
+      "op": 6,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 22,
+    "fields": {
+      "mapping": 77,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 23,
+    "fields": {
+      "mapping": 87,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 24,
+    "fields": {
+      "mapping": 88,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 25,
+    "fields": {
+      "mapping": 89,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 200,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "备注",
+      "target_field": "handler",
+      "transform": "regex_reviewer",
+      "is_active": true,
+      "order": -1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 201,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "数电发票号码",
+      "target_field": "invoice_number",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 202,
+    "fields": {
+      "source_type": "sales_invoice",
+      "source_column": "数电票号码",
+      "target_field": "invoice_number",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 203,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "数电票号码",
+      "target_field": "invoice_number",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 204,
+    "fields": {
+      "source_type": "purchase_invoice",
+      "source_column": "数电发票号码",
+      "target_field": "invoice_number",
+      "transform": "none",
+      "is_active": true,
+      "order": 1
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 26,
+    "fields": {
+      "mapping": 46,
+      "op": 3,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 27,
+    "fields": {
+      "mapping": 47,
+      "op": 3,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 28,
+    "fields": {
+      "mapping": 48,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 29,
+    "fields": {
+      "mapping": 49,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 30,
+    "fields": {
+      "mapping": 50,
+      "op": 7,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 31,
+    "fields": {
+      "mapping": 51,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 32,
+    "fields": {
+      "mapping": 52,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 33,
+    "fields": {
+      "mapping": 53,
+      "op": 8,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 34,
+    "fields": {
+      "mapping": 54,
+      "op": 2,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 35,
+    "fields": {
+      "mapping": 55,
+      "op": 2,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 36,
+    "fields": {
+      "mapping": 56,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 37,
+    "fields": {
+      "mapping": 205,
+      "op": 6,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 58,
+    "fields": {
+      "source_type": "acceptance",
+      "source_column": "票据包号码",
+      "target_field": "package_no",
+      "transform": "none",
+      "is_active": true,
+      "order": 0
+    }
+  },
+  {
+    "model": "books.mappingstep",
+    "pk": 990001,
+    "fields": {
+      "mapping": 58,
+      "op": 1,
+      "params": {},
+      "order": 0
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 207,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "贷方发生额（收入）",
+      "target_field": "credit",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 206,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "借方发生额（支取）",
+      "target_field": "debit",
+      "transform": "none",
+      "is_active": true,
+      "order": 2
+    }
+  },
+  {
+    "model": "books.columnmappingconfig",
+    "pk": 208,
+    "fields": {
+      "source_type": "bank",
+      "source_column": "备注",
+      "target_field": "remark",
+      "transform": "none",
+      "is_active": true,
+      "order": 3
+    }
+  }
+]

@@ -1,0 +1,170 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}承兑/迪链票据检索 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>承兑/迪链票据检索</h5>
+<p class="text-muted small mb-2">方向口径：签收（收款）记贷方，申请/转单（付款）记借方。承兑与迪链同属「承兑汇票」来源，用类型列区分。</p>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label">单位名称</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}" placeholder="支持模糊匹配">
+      <datalist id="unitlist">{% for u in unit_choices %}<option value="{{ u }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label">票据包号码</label>
+      <input list="pkglst" name="package_no" class="form-control" value="{{ filters.package_no }}" placeholder="支持模糊匹配">
+      <datalist id="pkglst">{% for p in package_choices %}<option value="{{ p }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">类型</label>
+      <select name="kind" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in kinds %}<option value="{{ v }}" {% if filters.kind == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">方向</label>
+      <select name="direction" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in directions %}<option value="{{ v }}" {% if filters.direction == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">年份</label>
+      <select name="year" class="form-select">
+        <option value="">全部</option>
+        {% for y in years %}<option value="{{ y }}" {% if filters.year == y|stringformat:'i' %}selected{% endif %}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">起始日期</label>
+      <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">截止日期</label>
+      <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+    </div>
+    <div class="col-6 col-md-2 d-grid"><button class="btn btn-primary">查询</button></div>
+    <div class="col-6 col-md-2 d-grid">
+      <a class="btn btn-success" href="{% url 'acceptance_export' %}?{{ querystring }}">导出 Excel</a>
+    </div>
+  </div>
+</form>
+
+<h6>按票据包号码汇总（命中 {{ count }} 条）</h6>
+<div class="table-responsive mb-4">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link pkg_sort "package_no" "票据包号码" %}</th>
+        <th>{% sort_link pkg_sort "unit" "单位名称" %}</th>
+        <th class="text-end">{% sort_link pkg_sort "recv" "收款" "desc" %}</th>
+        <th class="text-end">{% sort_link pkg_sort "pay" "付款" "desc" %}</th>
+        <th class="text-end">{% sort_link pkg_sort "net" "库存余额" "desc" %}</th>
+        <th class="text-end">{% sort_link pkg_sort "cnt" "笔数" "desc" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in pkg_summary %}
+      <tr>
+        <td><a href="{% url 'acceptance_detail' %}?package_no={{ s.package_no|urlencode }}&{{ querystring_no_pkg }}">{{ s.package_no }}</a></td>
+        <td>{{ s.unit }}</td>
+        <td class="text-end">{{ s.recv|cny }}</td>
+        <td class="text-end">{{ s.pay|cny }}</td>
+        <td class="text-end {% if s.net < 0 %}text-danger{% endif %}">{{ s.net|cny }}</td>
+        <td class="text-end">{{ s.cnt }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted">暂无带票据包号码的承兑记录</td></tr>
+      {% endfor %}
+      {% if pkg_summary %}
+      <tr class="table-info">
+        <td colspan="2">合计</td>
+        <td class="text-end">{{ pkg_totals.recv|cny }}</td>
+        <td class="text-end">{{ pkg_totals.pay|cny }}</td>
+        <td class="text-end">{{ pkg_totals.net|cny }}</td>
+        <td class="text-end"></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<h6>按单位汇总（命中 {{ count }} 条）</h6>
+<div class="table-responsive mb-4">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sum_sort "unit_name" "单位名称" %}</th>
+        <th class="text-end">{% sort_link sum_sort "recv" "签收(收款)" "desc" %}</th>
+        <th class="text-end">{% sort_link sum_sort "pay" "申请/转单(付款)" "desc" %}</th>
+        <th class="text-end">{% sort_link sum_sort "net" "净额" "desc" %}</th>
+        <th class="text-end">{% sort_link sum_sort "cnt" "笔数" "desc" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in summary %}
+      <tr>
+        <td><a href="{% url 'acceptance_detail' %}?unit_name={{ s.unit_name|urlencode }}&{{ querystring_no_unit }}">{{ s.unit_name }}</a></td>
+        <td class="text-end">{{ s.recv|cny }}</td>
+        <td class="text-end">{{ s.pay|cny }}</td>
+        <td class="text-end {% if s.net < 0 %}text-danger{% endif %}">{{ s.net|cny }}</td>
+        <td class="text-end">{{ s.cnt }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center text-muted">暂无票据记录（请先在「导入数据」中以来源类型「承兑汇票」导入承兑或迪链文件）</td></tr>
+      {% endfor %}
+      {% if summary %}
+      <tr class="table-info">
+        <td>合计</td>
+        <td class="text-end">{{ totals.recv|cny }}</td>
+        <td class="text-end">{{ totals.pay|cny }}</td>
+        <td class="text-end">{{ totals.net|cny }}</td>
+        <td class="text-end"></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<h6>明细</h6>
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link det_sort "date" "日期" "desc" %}</th>
+        <th>{% sort_link det_sort "package_no" "票据包号码" %}</th>
+        <th>{% sort_link det_sort "unit_name" "单位名称" %}</th>
+        <th>{% sort_link det_sort "kind" "类型" %}</th>
+        <th>{% sort_link det_sort "direction" "方向" %}</th>
+        <th class="text-end">{% sort_link det_sort "debit" "借方(付款)" "desc" %}</th>
+        <th class="text-end">{% sort_link det_sort "credit" "贷方(收款)" "desc" %}</th>
+        <th>{% sort_link det_sort "handler" "经手人" %}</th>
+        <th>{% sort_link det_sort "remark" "备注" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in page_obj %}
+      <tr>
+        <td>{{ r.occur_date|date:'Y-m-d'|default:'' }}</td>
+        <td>{% if r.package_no %}<a href="{% url 'acceptance_detail' %}?package_no={{ r.package_no|urlencode }}&{{ querystring_no_pkg }}">{{ r.package_no }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td><a href="{% url 'acceptance_detail' %}?unit_name={{ r.unit_name|urlencode }}&{{ querystring_no_unit }}">{{ r.unit_name }}</a></td>
+        <td>{% if r.tag == '迪链' %}<span class="badge bg-info text-dark">迪链</span>{% else %}承兑{% endif %}</td>
+        <td>{{ r.category }}</td>
+        <td class="text-end">{{ r.debit|cny }}</td>
+        <td class="text-end">{{ r.credit|cny }}</td>
+        <td>{{ r.handler }}</td>
+        <td>{{ r.remark }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="text-center text-muted">暂无明细</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

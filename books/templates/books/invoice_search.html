@@ -1,0 +1,115 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}发票检索 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>发票检索 / 穿透明细</h5>
+<p class="text-muted small">按发票号、单位、备注、发票状态（类别）、经手人关键字检索发票记录；也可按货物/应税劳务<b>名称</b>与<b>规格型号</b>检索明细行；点击「穿透」可查看该客户往来明细。</p>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2">
+    <div class="col-12 col-md-4">
+      <label class="form-label">关键字</label>
+      <input name="q" class="form-control" value="{{ filters.q }}" placeholder="发票号/单位/备注/发票状态/经手人">
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label">单位名称</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}">
+      <datalist id="unitlist">{% for u in unit_choices %}<option value="{{ u }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">发票号码</label>
+      <input name="invoice_no" class="form-control" value="{{ filters.invoice_no }}" placeholder="发票号">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">发票状态</label>
+      <select name="status" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in tags %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-1">
+      <label class="form-label">年份</label>
+      <input name="year" class="form-control" value="{{ filters.year }}" placeholder="如 2024">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">物料/产品名称</label>
+      <input name="goods_name" class="form-control" value="{{ filters.goods_name }}" placeholder="货物或应税劳务名称">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">规格型号</label>
+      <input name="spec" class="form-control" value="{{ filters.spec }}" placeholder="规格型号">
+    </div>
+    <div class="col-6 col-md-2 align-self-end">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="all_sources" value="1" id="allsrc" {% if all_sources %}checked{% endif %}>
+        <label class="form-check-label" for="allsrc">全部来源</label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="tax_included" value="1" id="taxinc" {% if show_tax_included %}checked{% endif %}>
+        <label class="form-check-label" for="taxinc">含税金单价</label>
+      </div>
+    </div>
+    <div class="col-12 d-flex gap-2">
+      <button class="btn btn-primary">查询</button>
+      <a class="btn btn-outline-secondary" href="{% url 'invoice_search' %}">重置</a>
+      <a class="btn btn-success" href="{% url 'invoice_search_export' %}?{{ querystring }}">导出 Excel</a>
+      <span class="ms-auto align-self-center text-muted">共 {{ count }} 条</span>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "date" "日期" "desc" %}</th>
+        <th>{% sort_link sort "unit" "单位名称" %}</th>
+        <th>{% sort_link sort "biz_type" "业务类型" %}</th>
+        <th>{% sort_link sort "status" "发票状态/类别" %}</th>
+        <th class="text-end">{% sort_link sort "debit" "借方" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "credit" "贷方" "desc" %}</th>
+        <th>{% sort_link sort "tag" "标记" %}</th>
+        <th>{% sort_link sort "invoice_no" "发票号" %}</th>
+        <th>{% sort_link sort "handler" "经手人" %}</th>
+        <th>{% sort_link sort "source" "来源" %}</th>
+        {% if show_matched %}<th>命中物料（数量·单价不含税）</th>{% endif %}
+        <th>穿透</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in page_obj %}
+      <tr>
+        <td>{{ r.occur_date|date:'Y-m-d'|default:'' }}</td>
+        <td>{{ r.unit_name }}</td>
+        <td>{{ r.biz_type }}</td>
+        <td>{{ r.category }}</td>
+        <td class="text-end">{{ r.debit|cny }}</td>
+        <td class="text-end">{{ r.credit|cny }}</td>
+        <td>{{ r.tag }}</td>
+        <td>{{ r.invoice_number }}</td>
+        <td>{{ r.handler }}</td>
+        <td>{{ r.get_source_type_display }}</td>
+        {% if show_matched %}<td>{% for m in r.matched_lines %}
+          <div>
+            <div>{{ m.goods_name }}{% if m.spec %} <span class="text-muted">/ {{ m.spec }}</span>{% endif %}</div>
+            <div class="small text-muted">
+              数量 ×{{ m.quantity|floatformat:"-4" }}{{ m.unit|default:'' }}
+              · 单价(不含税) {{ m.price|cny }}{% if show_tax_included and m.tax_included_price is not None %} · 单价(含税) {{ m.tax_included_price|cny }}{% endif %}
+            </div>
+          </div>
+        {% empty %}<span class="text-muted">—</span>{% endfor %}</td>{% endif %}
+        <td>
+          <a class="btn btn-sm btn-primary" href="{% url 'invoice_detail' r.pk %}">发票明细</a>
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'statement' %}?unit_name={{ r.unit_name|urlencode }}&year={{ r.year }}">往来明细</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if show_matched %}12{% else %}11{% endif %}" class="text-center text-muted">无匹配发票记录</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

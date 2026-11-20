@@ -1,0 +1,39 @@
+{% extends 'books/base.html' %}
+{% block title %}待复核户名 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">待复核/未匹配户名 <a href="{% url 'accountname_list' %}" class="btn btn-sm btn-outline-secondary">映射列表</a></h5>
+{% if messages %}
+  {% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}
+{% endif %}
+<p class="text-muted small">以下户名尚未匹配到往来主体。选择主体指派后会置为「人工锁定」，并回填所有相同户名的订单。</p>
+{% for row in rows %}
+  <div class="card mb-2">
+    <div class="card-body py-2">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>{{ row.name }}</strong>
+          <span class="badge bg-{% if row.result.status == '待复核' %}warning{% else %}secondary{% endif %} ms-2">{{ row.result.status }}</span>
+          {% if row.result.suggestions %}
+            <div class="small text-muted mt-1">
+              建议：{% for s in row.result.suggestions %}{{ s.name }} ({{ s.score }}){% if not forloop.last %}、{% endif %}{% endfor %}
+            </div>
+          {% endif %}
+        </div>
+        <form method="post" action="{% url 'accountname_review' %}" class="row g-1 align-items-center">
+          {% csrf_token %}
+          <input type="hidden" name="name" value="{{ row.name }}">
+          <div class="col-auto">
+            <select name="counterparty" class="form-select form-select-sm" required>
+              <option value="">--选择往来主体--</option>
+              {% for cp in counterparties %}<option value="{{ cp.pk }}">{{ cp.name }} [{{ cp.party_type }}]</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">指派并回填</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+{% empty %}
+  <div class="alert alert-info">暂无待复核户名。</div>
+{% endfor %}
+{% endblock %}

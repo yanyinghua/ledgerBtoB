@@ -1,0 +1,178 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}客户往来明细 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>客户往来明细</h5>
+{% if back_query %}<a class="btn btn-outline-secondary btn-sm mb-3" href="{{ back_query }}">← 返回</a>{% endif %}
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label">单位名称</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}" placeholder="输入或选择客户">
+      <datalist id="unitlist">
+        {% for u in unit_choices %}<option value="{{ u }}">{% endfor %}
+      </datalist>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">年份</label>
+      <select name="year" class="form-select">
+        <option value="">全部</option>
+        {% for y in years %}<option value="{{ y }}" {% if filters.year == y|stringformat:'i' %}selected{% endif %}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">期间(YYYYMM)</label>
+      <input name="period" class="form-control" value="{{ filters.period }}" placeholder="如 202401">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">业务类型</label>
+      <select name="biz_type" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in biz_types %}<option value="{{ v }}" {% if filters.biz_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">标记</label>
+      <select name="tag" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in tags %}<option value="{{ v }}" {% if filters.tag == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">起始日期</label>
+      <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">截止日期</label>
+      <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+    </div>
+    <div class="col-12 col-md-1 d-grid">
+      <button class="btn btn-primary">查询</button>
+    </div>
+  </div>
+</form>
+
+{% if filters.unit_name %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="text-muted small">单位：<b>{{ filters.unit_name }}</b>
+    ｜ 期初余额：{{ opening|cny }}
+    ｜ 期末余额：{{ ending|cny }}</div>
+  <div class="d-flex gap-2">
+    {% if role == '管理员' %}
+      {% if edit %}
+        <a class="btn btn-outline-primary btn-sm" href="?{{ filter_qs }}&per_page={{ per_page }}">退出编辑</a>
+      {% else %}
+        <a class="btn btn-outline-primary btn-sm" href="?{{ filter_qs }}&per_page={{ per_page }}&edit=1">编辑模式</a>
+      {% endif %}
+    {% endif %}
+    <a class="btn btn-success btn-sm"
+       href="{% url 'statement_export' %}?{{ filter_qs }}&per_page={{ per_page }}">
+      导出 Excel
+    </a>
+  </div>
+</div>
+
+{% if edit %}<form method="post" action="{% url 'record_tag_update' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle mb-0 statement-table">
+    <colgroup>
+      <col style="width:120px"><col style="width:100px"><col style="width:100px">
+      <col style="width:120px"><col style="width:120px"><col style="width:120px">
+      <col style="width:120px"><col style="width:90px"><col style="width:140px">
+      <col style="width:100px"><col style="width:200px">
+    </colgroup>
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "date" "日期" "desc" %}</th>
+        <th>{% sort_link sort "biz_type" "业务类型" %}</th>
+        <th>{% sort_link sort "category" "类别" %}</th>
+        <th class="text-end">{% sort_link sort "debit" "借方" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "credit" "贷方" "desc" %}</th>
+        <th class="text-end" title="余额按发生日累计，不随排序改变">余额</th>
+        <th>{% sort_link sort "handler" "经手人/业务员" %}</th>
+        <th>{% sort_link sort "tag" "标记" %}</th>
+        <th>{% sort_link sort "invoice_no" "发票号" %}</th>
+        <th>{% sort_link sort "source" "来源" %}</th>
+        <th>{% sort_link sort "remark" "备注" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="table-secondary">
+        <td>期初余额</td><td></td><td></td><td></td><td></td>
+        <td class="text-end">{{ opening|cny }}</td><td></td><td></td><td></td><td></td><td></td>
+      </tr>
+      {% for r in rows %}
+      <tr>
+        <td title="{{ r.date|date:'Y-m-d'|default:'' }}">{{ r.date|date:'Y-m-d'|default:'' }}</td>
+        <td title="{{ r.biz_type }}">{{ r.biz_type }}</td>
+        <td title="{{ r.category }}">{{ r.category }}</td>
+        <td class="text-end">{{ r.debit|cny }}</td>
+        <td class="text-end">{{ r.credit|cny }}</td>
+        <td class="text-end">{{ r.balance|cny }}</td>
+        <td title="{{ r.handler }}">{{ r.handler }}</td>
+        <td>{% if edit %}<select name="tag_{{ r.id }}" class="form-select form-select-sm">{% for v,l in tags %}<option value="{{ v }}" {% if r.tag == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>{% else %}{{ r.tag }}{% endif %}</td>
+        <td title="{{ r.invoice_no }}">{% if r.invoice_no %}<a href="{% url 'invoice_detail' r.id %}?back={{ request.get_full_path|urlencode }}" title="穿透查看发票明细">{{ r.invoice_no }}</a>{% else %}{{ r.invoice_no }}{% endif %}</td>
+        <td title="{{ r.source_type }}">{{ r.source_type }}</td>
+        <td class="remark-cell" title="{{ r.remark }}">{% if edit %}<input type="text" class="form-control form-control-sm remark-edit" name="remark_{{ r.id }}" value="{{ r.remark }}" data-pk="{{ r.id }}">{% else %}{{ r.remark }}{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="11" class="text-center text-muted">该筛选条件下无记录</td></tr>
+      {% endfor %}
+      {% if rows %}
+      <tr class="table-info">
+        <td>合计</td><td></td><td></td>
+        <td class="text-end">{{ totals.debit|cny }}</td>
+        <td class="text-end">{{ totals.credit|cny }}</td>
+        <td class="text-end">{{ ending|cny }}</td>
+        <td></td><td></td><td></td><td></td><td></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% if edit %}<button type="submit" class="btn btn-success mt-2">保存标注</button></form>{% endif %}
+
+{% if page_obj %}
+<nav class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
+  <div class="text-muted small">
+    共 {{ page_obj.paginator.count }} 条 ｜ 第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页
+  </div>
+  <div class="d-flex align-items-center gap-2">
+      <label class="small text-muted mb-0 d-flex align-items-center gap-1">
+      每页
+      <select class="form-select form-select-sm w-auto" onchange="location.href='?{{ filter_qs_edit }}&per_page='+this.value">
+        {% for c in per_page_choices %}<option value="{{ c }}" {% if c == per_page %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+      条
+    </label>
+{% include "books/_pagination.html" with page_qs=filter_qs_edit %}
+  </div>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="alert alert-info">请选择「单位名称」后查询客户往来明细。</div>
+{% endif %}
+
+{% if edit %}
+<script>
+document.querySelectorAll('.remark-edit').forEach(function (el) {
+  el.addEventListener('blur', function () {
+    var fd = new FormData();
+    fd.append('remark_' + el.dataset.pk, el.value);
+    fd.append('csrfmiddlewaretoken', document.querySelector('input[name=csrfmiddlewaretoken]').value);
+    fetch('{% url "record_tag_update" %}', {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) {
+          el.classList.add('is-valid');
+          setTimeout(function () { el.classList.remove('is-valid'); }, 1200);
+        }
+      });
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

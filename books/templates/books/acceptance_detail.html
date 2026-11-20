@@ -1,0 +1,43 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}票据明细 - {{ title }} - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>票据明细：{{ title }}</h5>
+<p class="text-muted small mb-2">
+  {% if mode == 'pkg' %}按票据包号码穿透{% else %}按单位名称穿透{% endif %}。
+  下方为导入时的原始列（全部 {{ raw_columns|length }} 列）。库存余额 = 收款 − 付款。
+</p>
+
+<a class="btn btn-outline-secondary btn-sm mb-3" href="{% url 'acceptance' %}?{{ back_query }}">← 返回检索</a>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body row g-2 text-center align-items-center">
+    {% if unit_name %}<div class="col"><div class="text-muted small">单位名称</div><div class="fs-6">{{ unit_name }}</div></div>{% endif %}
+    <div class="col"><div class="text-muted small">收款</div><div class="fs-5">{{ unit_summary.recv|cny }}</div></div>
+    <div class="col"><div class="text-muted small">付款</div><div class="fs-5">{{ unit_summary.pay|cny }}</div></div>
+    <div class="col"><div class="text-muted small">库存余额</div><div class="fs-5 {% if unit_summary.net < 0 %}text-danger{% endif %}">{{ unit_summary.net|cny }}</div></div>
+    <div class="col"><div class="text-muted small">笔数</div><div class="fs-5">{{ unit_summary.cnt }}</div></div>
+  </div>
+</div>
+
+<h6>票据明细（导入原始列，命中 {{ count }} 条）</h6>
+<div class="table-responsive">
+  {% if raw_columns %}
+  <table class="table table-sm table-bordered table-hover align-middle small">
+    <thead class="table-light">
+      <tr>{% for c in raw_columns %}<th>{% if c in raw_sortable %}{% sort_link sort c c %}{% else %}{{ c }}{% endif %}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      {% for row in raw_rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted">该记录无关联的原始导入行（raw_row 缺失），无法展示原始列。</p>
+  {% endif %}
+</div>
+
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

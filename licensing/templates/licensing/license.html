@@ -1,0 +1,44 @@
+{% extends 'books/base.html' %}
+{% block title %}授权管理{% endblock %}
+{% block content %}
+<div class="container mt-4" style="max-width: 760px;">
+  <h4 class="mb-3">授权管理</h4>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="mb-2">当前状态：
+        {% if status.state == 'active' %}<span class="badge bg-success">已激活</span>
+        {% elif status.state == 'trial' %}<span class="badge bg-warning text-dark">试用中</span>
+        {% else %}<span class="badge bg-danger">只读（{{ status.state }}）</span>{% endif %}
+      </div>
+      <div>{{ status.message }}</div>
+      {% if status.days_left is not None %}
+        <div class="text-muted">剩余 {{ status.days_left }} 天</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <h6 class="card-title">本机机器号</h6>
+      <code class="fs-5">{{ machine_id }}</code>
+      <div class="text-muted small mt-2">把机器号发给供应商即可换取授权码。指纹要素：
+        {% for k, v in parts.items %}{{ k }}={{ v|default:'空' }}{% if not forloop.last %} · {% endif %}{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <h6 class="card-title">激活授权</h6>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-2">
+          <textarea class="form-control" name="code" rows="3" placeholder="LEDGER1-XXXXXX-..."></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">激活</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

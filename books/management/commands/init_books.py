@@ -1,0 +1,270 @@
+"""初始化：预置角色分组（管理员/查询员/业务员）。
+列映射与算子/规则不再在此自动播种——由用户按真实表头在后台手工配置
+（或运行 init_operators 播种算子/规则，外加本命令的 --seed-winshare-mappings 一键载入样例映射）。
+
+可重复执行，已存在则跳过。
+"""
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import Group
+
+from books.models import ColumnMappingConfig, MappingStep, Operator
+
+
+# 来源类型 -> [(source_column, target_field, [ (op_key, params), ... ], order), ...]
+# 这是依据 /mnt/win_share 实际表头准备好的样例映射，供一键起步；仍属手工确认的便捷入口。
+WINSHARE_MAPPINGS = {
+    'sales_invoice': [
+        ('购方识别号', 'tax_no', [('none', {})], 0),
+        ('购买方名称', 'unit_name', [('fullwidth_brackets', {})], 0),
+        ('开票日期', 'occur_date', [('to_date', {})], 0),
+        ('价税合计', 'debit', [('to_decimal', {})], 0),
+        ('开票人', 'handler', [('regex_salesperson', {})], 0),
+        ('发票状态', 'category', [('none', {})], 0),
+        ('备注', 'remark', [('none', {})], 0),
+    ],
+    'purchase_invoice': [
+        ('销方识别号', 'tax_no', [('none', {})], 0),
+        ('销方名称', 'unit_name', [('fullwidth_brackets', {})], 0),
+        ('开票日期', 'occur_date', [('to_date', {})], 0),
+        ('价税合计', 'credit', [('to_decimal', {})], 0),
+        ('发票状态', 'category', [('none', {})], 0),
+        ('备注', 'remark', [('none', {})], 0),
+    ],
+    'bank': [
+        ('对方户名', 'unit_name', [('fullwidth_brackets', {})], 0),
+        ('交易时间', 'occur_date', [('to_date', {})], 0),
+        ('借方发生额', 'debit', [('to_decimal', {})], 0),
+        ('贷方发生额', 'credit', [('to_decimal', {})], 0),
+        ('摘要', 'remark', [('none', {})], 0),
+        ('用途', 'remark', [('none', {})], 0),
+    ],
+    'other': [
+        ('收入说明', 'unit_name', [('fullwidth_brackets', {})], 0),
+        ('收入金额', 'credit', [('to_decimal', {})], 0),
+        ('日期', 'occur_date', [('to_date', {})], 0),
+        ('经办人', 'handler', [('regex_salesperson', {})], 0),
+        ('备注', 'remark', [('none', {})], 0),
+        ('收入账户', 'remark', [('none', {})], 0),
+    ],
+}
+
+
+def _ensure_operator(key):
+    """确保算子存在（init_operators 应先执行；此处兜底）。"""
+    op, _ = Operator.objects.get_or_create(key=key, defaults={'name': key, 'params_schema': []})
+    return op
+
+
+# B2B 拉卡拉订单列映射（常见别名占位）。
+# 格式：(原始列名, 目标字段, [(算子key, 参数), ...], order)
+#   - 同一目标字段可配多条 = 别名；extract_fields 按 order 从小到大取第一个非空值。
+#   - 金额列用 to_decimal（兼容千分位/货币符号/括号负数），日期列用 to_date。
+#   - 真实表头到位后只需在此增删别名/调整 order，不改导入代码。
+#   - 注意：不要把「订单金额列」同时映射到 payment_amount，否则 _build_order 会把
+#     整单金额当成单笔收款、误判为已全额收付；payment_amount 只映射独立的收付款列。
+LAKALA_MAPPINGS = {
+    'lakala_order': [
+        # —— 订单号 ——
+        ('订单号', 'order_no', [('none', {})], 0),
+        ('商户订单号', 'order_no', [('none', {})], 10),
+        ('交易订单号', 'order_no', [('none', {})], 20),
+        ('拉卡拉订单号', 'order_no', [('none', {})], 30),
+        ('订单编号', 'order_no', [('none', {})], 40),
+        # —— 子订单号 ——
+        ('子订单号', 'sub_order_no', [('none', {})], 0),
+        ('子单号', 'sub_order_no', [('none', {})], 10),
+        # —— 订单户名（原始，用于户名匹配）——
+        ('店铺名称', 'counterparty_raw_name', [('trim', {})], 0),
+        ('门店名称', 'counterparty_raw_name', [('trim', {})], 10),
+        ('店铺名', 'counterparty_raw_name', [('trim', {})], 20),
+        ('店名', 'counterparty_raw_name', [('trim', {})], 30),
+        ('门店', 'counterparty_raw_name', [('trim', {})], 40),
+        ('终端名称', 'counterparty_raw_name', [('trim', {})], 50),
+        ('交易对手名称', 'counterparty_raw_name', [('trim', {})], 60),
+        # —— 商户名 ——
+        ('商户名称', 'merchant_name', [('trim', {})], 0),
+        ('商户名', 'merchant_name', [('trim', {})], 10),
+        ('商户', 'merchant_name', [('trim', {})], 20),
+        # —— 订单金额 ——
+        ('订单金额', 'total_amount', [('to_decimal', {})], 0),
+        ('交易金额', 'total_amount', [('to_decimal', {})], 10),
+        ('金额', 'total_amount', [('to_decimal', {})], 20),
+        ('订单金额(元)', 'total_amount', [('to_decimal', {})], 30),
+        ('交易金额(元)', 'total_amount', [('to_decimal', {})], 40),
+        # —— 已收付金额 ——
+        ('已收金额', 'paid_amount', [('to_decimal', {})], 0),
+        ('已结算金额', 'paid_amount', [('to_decimal', {})], 10),
+        ('已付金额', 'paid_amount', [('to_decimal', {})], 20),
+        ('实收金额', 'paid_amount', [('to_decimal', {})], 30),
+        ('已收款金额', 'paid_amount', [('to_decimal', {})], 40),
+        # —— 单笔收付款金额（生成 OrderPayment 子行，勿与订单金额同源）——
+        ('收付款金额', 'payment_amount', [('to_decimal', {})], 0),
+        ('支付金额', 'payment_amount', [('to_decimal', {})], 10),
+        ('本次收付款金额', 'payment_amount', [('to_decimal', {})], 20),
+        ('本次支付金额', 'payment_amount', [('to_decimal', {})], 30),
+        # —— 订单日期 ——
+        ('交易时间', 'order_date', [('to_date', {})], 0),
+        ('订单日期', 'order_date', [('to_date', {})], 10),
+        ('下单时间', 'order_date', [('to_date', {})], 20),
+        ('交易日期', 'order_date', [('to_date', {})], 30),
+        ('订单时间', 'order_date', [('to_date', {})], 40),
+        # —— 业务员 ——
+        ('业务员', 'salesperson_name', [('trim', {})], 0),
+        ('业务人员', 'salesperson_name', [('trim', {})], 10),
+        ('销售员', 'salesperson_name', [('trim', {})], 20),
+        ('客户经理', 'salesperson_name', [('trim', {})], 30),
+        ('经手人', 'salesperson_name', [('trim', {})], 40),
+        # —— 收付款账户名 ——
+        ('收付款账户名', 'receiving_account_name', [('trim', {})], 0),
+        ('结算账户', 'receiving_account_name', [('trim', {})], 10),
+        ('收款账户', 'receiving_account_name', [('trim', {})], 20),
+        ('账户名称', 'receiving_account_name', [('trim', {})], 30),
+        ('开户名', 'receiving_account_name', [('trim', {})], 40),
+        ('银行账户', 'receiving_account_name', [('trim', {})], 50),
+        ('收款账户名', 'payment_account_name', [('trim', {})], 0),
+        ('付款账户名', 'payment_account_name', [('trim', {})], 10),
+        # —— 状态 ——
+        ('订单状态', 'order_status', [('none', {})], 0),
+        ('交易状态', 'order_status', [('none', {})], 10),
+        ('收付款状态', 'payment_status', [('none', {})], 0),
+        ('结算状态', 'payment_status', [('none', {})], 10),
+        ('支付状态', 'payment_status', [('none', {})], 20),
+        # —— 收付款日期 / 流水号 ——
+        ('收付款日期', 'payment_date', [('to_date', {})], 0),
+        ('结算日期', 'payment_date', [('to_date', {})], 10),
+        ('到账日期', 'payment_date', [('to_date', {})], 20),
+        ('收付款流水号', 'payment_ref', [('none', {})], 0),
+        ('交易流水号', 'payment_ref', [('none', {})], 10),
+        ('支付流水号', 'payment_ref', [('none', {})], 20),
+        ('流水号', 'payment_ref', [('none', {})], 30),
+        # —— 货物摘要 / 购销方向 ——
+        ('货物摘要', 'goods_summary', [('none', {})], 0),
+        ('商品名称', 'goods_summary', [('none', {})], 10),
+        ('商品', 'goods_summary', [('none', {})], 20),
+        ('摘要', 'goods_summary', [('none', {})], 30),
+        ('购销方向', 'direction_raw', [('none', {})], 0),
+        ('订单类型', 'direction_raw', [('none', {})], 10),
+        ('交易类型', 'direction_raw', [('none', {})], 20),
+        ('业务类型', 'direction_raw', [('none', {})], 30),
+    ],
+    # API（JSON）来源：常见 camelCase / snake_case 键名，显式列出以免与 Excel 映射互相污染。
+    'lakala_order_api': [
+        ('orderNo', 'order_no', [('none', {})], 0),
+        ('order_no', 'order_no', [('none', {})], 10),
+        ('merchantOrderNo', 'order_no', [('none', {})], 20),
+        ('subOrderNo', 'sub_order_no', [('none', {})], 0),
+        ('shopName', 'counterparty_raw_name', [('trim', {})], 0),
+        ('storeName', 'counterparty_raw_name', [('trim', {})], 10),
+        ('counterpartyRawName', 'counterparty_raw_name', [('trim', {})], 20),
+        ('merchantName', 'merchant_name', [('trim', {})], 0),
+        ('totalAmount', 'total_amount', [('to_decimal', {})], 0),
+        ('paidAmount', 'paid_amount', [('to_decimal', {})], 0),
+        ('paymentAmount', 'payment_amount', [('to_decimal', {})], 0),
+        ('orderDate', 'order_date', [('to_date', {})], 0),
+        ('transactionTime', 'order_date', [('to_date', {})], 10),
+        ('salespersonName', 'salesperson_name', [('trim', {})], 0),
+        ('receivingAccountName', 'receiving_account_name', [('trim', {})], 0),
+        ('paymentAccountName', 'payment_account_name', [('trim', {})], 0),
+        ('orderStatus', 'order_status', [('none', {})], 0),
+        ('paymentStatus', 'payment_status', [('none', {})], 0),
+        ('paymentDate', 'payment_date', [('to_date', {})], 0),
+        ('paymentRef', 'payment_ref', [('none', {})], 0),
+        ('goodsSummary', 'goods_summary', [('none', {})], 0),
+        ('directionRaw', 'direction_raw', [('none', {})], 0),
+    ],
+}
+
+
+def seed_lakala_mappings(self):
+    """幂等播种：新增或更新列映射的 order 与算子步骤，并清理多余步骤。
+
+    这样修改 LAKALA_MAPPINGS 后重跑本命令即可生效，无需手工删旧映射。
+    """
+    created = updated = 0
+    for source_type, rows in LAKALA_MAPPINGS.items():
+        if not rows:
+            continue
+        for source_column, target_field, steps, order in rows:
+            mapping, was = ColumnMappingConfig.objects.get_or_create(
+                source_type=source_type, source_column=source_column, target_field=target_field,
+                defaults={'transform': 'none', 'is_active': True, 'order': order})
+            if was:
+                created += 1
+            else:
+                # 已存在则同步优先级/启用状态
+                changed = []
+                if mapping.order != order:
+                    mapping.order = order; changed.append('order')
+                if not mapping.is_active:
+                    mapping.is_active = True; changed.append('is_active')
+                if changed:
+                    mapping.save(update_fields=changed)
+                    updated += 1
+            # 算子步骤：按 (order, op) 对齐，删除不再声明的步骤
+            wanted = []
+            for i, (op_key, params) in enumerate(steps):
+                op = _ensure_operator(op_key)
+                step, _ = MappingStep.objects.get_or_create(
+                    mapping=mapping, op=op, order=i, defaults={'params': params})
+                if step.params != params:
+                    step.params = params
+                    step.save(update_fields=['params'])
+                wanted.append(step.pk)
+            mapping.steps.exclude(pk__in=wanted).delete()
+    self.stdout.write(self.style.SUCCESS(
+        f'拉卡拉占位映射：新增 {created} 条，更新 {updated} 条'))
+
+
+def seed_winshare_mappings(self):
+    created = 0
+    for source_type, rows in WINSHARE_MAPPINGS.items():
+        for source_column, target_field, steps, order in rows:
+            mapping, was = ColumnMappingConfig.objects.get_or_create(
+                source_type=source_type, source_column=source_column, target_field=target_field,
+                defaults={'transform': 'none', 'is_active': True, 'order': order})
+            if was:
+                mapping.transform = 'none'
+                mapping.is_active = True
+                mapping.order = order
+                mapping.save(update_fields=['transform', 'is_active', 'order'])
+                created += 1
+            # 步骤
+            for i, (op_key, params) in enumerate(steps):
+                op = _ensure_operator(op_key)
+                MappingStep.objects.get_or_create(
+                    mapping=mapping, op=op, order=i,
+                    defaults={'params': params})
+    self.stdout.write(self.style.SUCCESS(f'样例映射（win_share）：新增/更新 {created} 条列映射'))
+
+
+class Command(BaseCommand):
+    help = '预置角色分组；可选 --seed-winshare-mappings 一键载入样例列映射'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--seed-winshare-mappings', action='store_true',
+                            help='载入依据 /mnt/win_share 实表头准备的样例列映射（默认不执行）')
+        parser.add_argument('--seed-lakala-mappings', action='store_true',
+                            help='载入 B2B 拉卡拉订单占位列映射（默认不执行）')
+
+    def handle(self, *args, **options):
+        groups = ['管理员', '高层', '部门', '查询员', '业务员', '商户']
+        for g in groups:
+            grp, was = Group.objects.get_or_create(name=g)
+            if was:
+                self.stdout.write(self.style.SUCCESS(f'创建分组：{g}'))
+            else:
+                self.stdout.write(f'分组已存在：{g}')
+
+        # B2B：种子根部门（供组织树起步）
+        from books.models import Department
+        if not Department.objects.filter(code='ROOT').exists():
+            Department.objects.create(name='总部', code='ROOT')
+            self.stdout.write(self.style.SUCCESS('创建根部门：总部 (ROOT)'))
+
+        if options.get('seed_winshare_mappings'):
+            seed_winshare_mappings(self)
+        if options.get('seed_lakala_mappings'):
+            seed_lakala_mappings(self)
+        if not options.get('seed_winshare_mappings') and not options.get('seed_lakala_mappings'):
+            self.stdout.write('（跳过样例映射：列映射请在后台手工维护；'
+                              '一键起步可加 --seed-winshare-mappings 或 --seed-lakala-mappings）')

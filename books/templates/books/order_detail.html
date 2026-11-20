@@ -1,0 +1,57 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}订单详情 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">订单详情 <a href="{% url 'order_list' %}" class="btn btn-sm btn-outline-secondary">返回</a></h5>
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header">归一化字段</div>
+      <table class="table table-sm mb-0">
+        <tr><th>订单号</th><td>{{ order.external_order_no }}</td></tr>
+        <tr><th>订单户名(原始)</th><td>{{ order.counterparty_raw_name }}</td></tr>
+        <tr><th>方向</th><td>{{ order.direction }}</td></tr>
+        <tr><th>订单日期</th><td>{{ order.order_date|date:'Y-m-d' }}</td></tr>
+        <tr><th>订单金额</th><td>{{ order.total_amount|cny }}</td></tr>
+        <tr><th>已收付</th><td>{{ order.paid_amount|cny }}</td></tr>
+        <tr><th>未收付</th><td>{{ order.unpaid_amount|cny }}</td></tr>
+        <tr><th>往来主体</th><td>{{ order.counterparty.name|default:'-' }}</td></tr>
+        <tr><th>商户</th><td>{{ order.merchant.name|default:'-' }}</td></tr>
+        <tr><th>业务员</th><td>{{ order.salesperson.name|default:order.salesperson_raw|default:'-' }}</td></tr>
+        <tr><th>部门</th><td>{{ order.department.name|default:'-' }}</td></tr>
+        <tr><th>收付款账户</th><td>{{ order.receiving_account.account_name|default:'-' }}</td></tr>
+        <tr><th>匹配状态</th><td>{{ order.match_status }}（{{ order.match_confidence }}）</td></tr>
+        <tr><th>订单状态</th><td>{{ order.order_status|default:'-' }}</td></tr>
+        <tr><th>备注</th><td>{{ order.remark|default:'-' }}</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card mb-3">
+      <div class="card-header">收付款明细（{{ payments|length }}）</div>
+      {% if payments %}
+      <table class="table table-sm mb-0">
+        <thead><tr><th>日期</th><th>金额</th><th>方向</th><th>账户</th><th>流水号</th></tr></thead>
+        <tbody>
+        {% for p in payments %}
+          <tr><td>{{ p.pay_date|date:'Y-m-d' }}</td><td>{{ p.amount|cny }}</td><td>{{ p.direction }}</td>
+          <td>{{ p.account.account_name|default:'-' }}</td><td>{{ p.external_ref|default:'-' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<div class="card-body text-muted">无收付款明细。</div>{% endif %}
+    </div>
+
+    {% if raw %}
+    <div class="card">
+      <div class="card-header">原始导入数据</div>
+      <div class="card-body" style="max-height:360px;overflow:auto;">
+        <table class="table table-sm mb-0">
+          {% for k, v in raw.items %}<tr><th>{{ k }}</th><td>{{ v }}</td></tr>{% endfor %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

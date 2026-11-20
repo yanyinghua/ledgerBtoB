@@ -1,0 +1,75 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}账期管理 - 账龄分析 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>账期管理 · 账龄分析</h5>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-6 col-md-3">
+      <label class="form-label">截至日期</label>
+      <input type="date" name="as_of" class="form-control" value="{{ as_of|date:'Y-m-d' }}">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">默认账期(天)</label>
+      <input type="number" name="default_term" class="form-control" value="{{ default_term }}" min="0">
+      <div class="form-text">未单独设置账期的客户使用此默认值</div>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label">客户(可选)</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}">
+      <datalist id="unitlist">{% for u in unit_choices %}<option value="{{ u }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-6 col-md-1 d-grid"><button class="btn btn-primary">查询</button></div>
+    <div class="col-6 col-md-2 d-grid">
+      <a class="btn btn-success" href="{% url 'aging_export' %}?as_of={{ as_of|date:'Y-m-d' }}&default_term={{ default_term }}&unit_name={{ filters.unit_name|urlencode }}">导出 Excel</a>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "unit" "客户" %}</th>
+        <th>{% sort_link sort "term" "账期(天)" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "balance" "应收余额" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "overdue" "逾期金额" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "b1" "30天内" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "b2" "31-60天" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "b3" "61-90天" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "b4" "90天以上" "desc" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a href="{% url 'statement' %}?unit_name={{ r.unit|urlencode }}">{{ r.unit }}</a></td>
+        <td>{{ r.credit_term }}</td>
+        <td class="text-end">{{ r.balance|cny }}</td>
+        <td class="text-end text-danger">{{ r.overdue|cny }}</td>
+        <td class="text-end">{{ r.b1|cny }}</td>
+        <td class="text-end">{{ r.b2|cny }}</td>
+        <td class="text-end">{{ r.b3|cny }}</td>
+        <td class="text-end">{{ r.b4|cny }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>
+      {% endfor %}
+      {% if rows %}
+      <tr class="table-info">
+        <td colspan="2">合计</td>
+        <td class="text-end">{{ totals.balance|cny }}</td>
+        <td class="text-end text-danger">{{ totals.overdue|cny }}</td>
+        <td class="text-end">{{ totals.b1|cny }}</td>
+        <td class="text-end">{{ totals.b2|cny }}</td>
+        <td class="text-end">{{ totals.b3|cny }}</td>
+        <td class="text-end">{{ totals.b4|cny }}</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted small">应收余额按客户维度 FIFO 匹配发票与回款；逾期=账龄超过该客户「账期天数」（在客户-业务员映射中设置，缺省用上方默认值）的未清金额。</p>
+{% endblock %}

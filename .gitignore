@@ -1,0 +1,44 @@
+# 数据库（含真实业务数据，禁止入库）
+*.sqlite3
+db.sqlite3
+backups/
+
+# 日志（含增量导入/失败记录，可能含业务信息）
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# 交付包产物（含完整源码，按需外发，不入库）
+dist/
+
+# 随手放的明文凭据/改密备忘（如 sn、chongzhimima），禁止入库
+sn
+chongzhimima
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 静态/媒体（运行时生成）
+staticfiles/
+media/
+
+# 对账未匹配清单导出（reconcile_unmatched 默认输出，含业务数据，禁止入库）
+reconcile_unmatched/
+
+# 主表/对账导出（export_master 等运行时产物，含业务数据，禁止入库）
+exports/
+
+# 编辑器/OS
+.idea/
+.vscode/
+.DS_Store
+
+# LibreOffice 锁文件
+.~lock.*

@@ -1,0 +1,60 @@
+# GitLab CI 流水线
+# 阶段：validate(校验脚本可运行) → test(Django 测试) → deploy(推送到腾讯云轻量服务器并部署)
+#
+# 需在「项目设置 → CI/CD → Variables」配置（建议 masked）：
+#   SSH_PRIVATE_KEY  登录服务器的私钥（其公钥已加入服务器 ~/.ssh/authorized_keys）
+#   DEPLOY_HOST      服务器公网 IP 或域名
+#   DEPLOY_USER      登录用户（建议 root，或具 NOPASSWD sudo 的用户）
+# 说明：生产密钥(DJANGO_*)不放在 GitLab，而是存在服务器的 /etc/ledger/env；
+#       部署时由 deploy.sh 在服务器端执行 check_env.py 做真实校验（门禁）。
+
+stages:
+  - validate
+  - test
+  - deploy
+
+variables:
+  PYTHONUNBUFFERED: "1"
+
+env-check:
+  stage: validate
+  image: python:3.10
+  script:
+    - chmod +x scripts/check_env.py
+    - python3 scripts/check_env.py --strict-hsts
+  # 若在 GitLab 也配置了 DJANGO_* 变量，此步即为硬门禁；否则仅提示，不阻断流水线。
+  allow_failure: true
+
+django-test:
+  stage: test
+  image: python:3.10
+  variables:
+    # 即使项目级设了 DJANGO_DEBUG=False，也关闭 SSL 重定向，避免测试客户端 GET 被 301 跳转。
+    DJANGO_SECURE_SSL_REDIRECT: "False"
+    DJANGO_HSTS_SECONDS: "0"
+  script:
+    - pip install -q -r requirements.txt
+    - python3 manage.py check
+    - python3 manage.py test books.tests
+  # 测试使用 SQLite，无需外部服务；settings 在未设环境变量时回退开发值，测试可正常运行。
+
+deploy-prod:
+  stage: deploy
+  image: debian:bookworm-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq openssh-client rsync
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    # 推送代码（排除运行期产物/敏感文件），再由服务器执行 deploy.sh
+    - rsync -az --delete
+        --exclude='.git' --exclude='venv' --exclude='db.sqlite3'
+        --exclude='staticfiles' --exclude='media' --exclude='.env'
+        --exclude='logs' --exclude='__pycache__' --exclude='*.pyc'
+        ./ "$DEPLOY_USER@$DEPLOY_HOST:/srv/ledger/"
+    - ssh "$DEPLOY_USER@$DEPLOY_HOST" "sudo bash /srv/ledger/deploy/deploy.sh"
+  # 仅 master 分支自动部署；其他分支只跑 validate+test
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"

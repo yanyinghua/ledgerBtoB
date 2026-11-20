@@ -1,0 +1,123 @@
+name: CI
+
+# 流水线：validate → test → deploy
+#   - push 到 master 或任意 PR：跑 validate + test
+#   - 仅 push 到 master 且前两阶段通过：自动 rsync 代码到服务器并执行 deploy.sh
+#
+# 需要在仓库 Settings → Secrets → Actions 配置：
+#   SSH_PRIVATE_KEY  本机生成的部署私钥（公钥已加入服务器 root 的 authorized_keys）
+#   DEPLOY_HOST      服务器公网 IP 或域名（如 124.223.184.190）
+#   DEPLOY_USER      登录用户（root，或具 NOPASSWD sudo 的用户）
+#
+# 生产密钥(DJANGO_*) 不放在 GitHub，存在服务器 /etc/ledger/env；
+# 部署时由 deploy.sh 在服务器端执行 check_env.py 做真实校验（门禁）。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Django 系统检查（无需生产密钥）
+        run: python manage.py check
+      - name: 检查模板不得引用外部 CDN 静态资源
+        # 外部 CDN 在国内网络常被墙，加载失败会让页面退化成无样式裸 HTML
+        run: bash deploy/check-no-cdn.sh
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # 测试用宽松配置：关闭 SSL 重定向/HSTS，避免测试客户端 GET 被 301 跳转导致断言失败。
+      # DEBUG=True 时 SECRET_KEY 可自动生成，无需依赖 Secrets。
+      DJANGO_DEBUG: 'True'
+      DJANGO_SECURE_SSL_REDIRECT: 'False'
+      DJANGO_HSTS_SECONDS: '0'
+      DJANGO_ALLOWED_HOSTS: '*'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: 运行 Django 测试
+        run: python manage.py test books
+
+  deploy:
+    needs: [validate, test]
+    # 仅 push 到 master 时部署；PR 事件（ref 为 refs/pull/...）不触发。
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: 解析部署主机（ledger 别名/空/非法 → 真实公网 IP）
+        # runner 上没有本机 SSH 别名 ledger，且 Secrets 里填错主机都会导致
+        # Could not resolve hostname / 连不上。除合法 IP 或域名外，一律回落到真实公网 IP。
+        run: |
+          H="${DEPLOY_HOST:-}"
+          if [ -z "$H" ] || [ "$H" = "ledger" ] || ! echo "$H" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$|^[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$'; then
+            H="124.223.184.190"
+          fi
+          echo "DEPLOY_HOST=$H" >> "$GITHUB_ENV"
+          echo "有效部署主机: $H"
+      - name: 安装 ssh + rsync
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq openssh-client rsync
+      - name: 配置 SSH 密钥
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          # 兼容 Secrets 中可能存在的字面量 \n、\r\n 或首尾引号，避免 libcrypto 解析失败
+          python3 - <<'PY'
+          import os
+          raw = os.environ.get('SSH_PRIVATE_KEY', '')
+          # 兼容 Secrets 中可能存在的字面量 \n、\r\n 或首尾引号，避免 libcrypto 解析失败
+          key = raw.replace('\\r\\n', '\n').replace('\\n', '\n').replace('\r', '')
+          key = key.strip().strip('"').strip("'")
+          if not key:
+              raise SystemExit('SSH_PRIVATE_KEY 为空')
+          # 逐行去空白并丢弃空行：修复从带缩进的 YAML/Markdown 复制时行内前导空格
+          # 导致 -----END ...----- 多了前导空格、libcrypto 解析失败的问题
+          lines = [ln.strip() for ln in key.splitlines() if ln.strip()]
+          if not (lines[0].startswith('-----BEGIN') and lines[-1].startswith('-----END')):
+              raise SystemExit('SSH_PRIVATE_KEY 格式异常：首尾行应为 -----BEGIN/END ... PRIVATE KEY-----')
+          key = '\n'.join(lines)
+          with open(os.path.expanduser('~/deploy_key'), 'w') as f:
+              f.write(key + '\n')
+          print(f'私钥已写入，共 {len(lines)} 行，首尾行：{lines[0]!r} / {lines[-1]!r}')
+          PY
+          chmod 600 "$HOME/deploy_key"
+      - name: 连接预检
+        run: |
+          ssh -i "$HOME/deploy_key" -o StrictHostKeyChecking=no -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'echo CI_DEPLOY_CONNECTION_OK'
+      - name: 同步代码并部署
+        run: |
+          set -x
+          echo "HOME=$HOME DEPLOY_HOST=$DEPLOY_HOST DEPLOY_USER=$DEPLOY_USER PWD=$(pwd)"
+          ls -l "$HOME/deploy_key" || echo "deploy_key 缺失！"
+          ls -l deploy/rsync-exclude.txt || echo "exclude 文件缺失！"
+          # 全新 runner 没有 known_hosts，rsync/ssh 默认会因主机密钥校验失败而 abort；
+          # 用 -e 显式关闭 StrictHostKeyChecking（连接预检已证明密钥本身可用）。
+          RSYNC_SSH="ssh -i $HOME/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          rsync -azv --delete -e "$RSYNC_SSH" --exclude-from="$(pwd)/deploy/rsync-exclude.txt" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:/srv/ledger/"
+          echo "rsync exit=$?"
+          ssh -i "$HOME/deploy_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            "$DEPLOY_USER@$DEPLOY_HOST" "sudo bash /srv/ledger/deploy/deploy.sh"

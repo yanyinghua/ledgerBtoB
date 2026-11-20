@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>验证码登录 - B2B往来账系统</title>
+  <link href="{% static 'books/vendor/bootstrap.min.css' %}" rel="stylesheet">
+  <style>
+    body { background: #f5f6f8; }
+    .login-card { max-width: 380px; margin: 8vh auto; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="card login-card shadow-sm">
+    <div class="card-body">
+      <h4 class="card-title text-center mb-4">手机验证码登录</h4>
+      {% if messages %}
+        {% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}
+      {% endif %}
+      <form method="post" action="{% url 'phone_login' %}">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label">手机号</label>
+          <input type="tel" name="phone" class="form-control" value="{{ phone|default:'' }}" required {% if step == 'confirm' %}readonly{% endif %}>
+        </div>
+        {% if step == 'confirm' %}
+        <div class="mb-3">
+          <label class="form-label">验证码</label>
+          <input type="text" name="code" class="form-control" maxlength="6" placeholder="6 位验证码" required>
+        </div>
+        <button type="submit" name="action" value="confirm" class="btn btn-primary w-100">登录</button>
+        {% else %}
+        <button type="submit" name="action" value="send" class="btn btn-primary w-100">获取验证码</button>
+        {% endif %}
+      </form>
+      <div class="d-grid gap-2 mt-3">
+        <a href="{% url 'login' %}" class="btn btn-outline-primary btn-sm">密码登录</a>
+        <a href="{% url 'register' %}" class="btn btn-outline-secondary btn-sm">注册</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{% static 'books/vendor/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

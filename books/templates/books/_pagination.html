@@ -1,0 +1,24 @@
+{# 分页控件：首页 / 上一页 / 第 X / Y 页 / 下一页 / 末页。page_qs 为不含 page 的查询串；若上下文有 per_page 则一并带上。 #}
+{% if page_obj.paginator.num_pages > 1 %}
+<nav>
+  <ul class="pagination pagination-sm">
+    {% with suffix=per_page|default:"" %}
+    <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+      <a class="page-link" href="?{{ page_qs }}{% if suffix %}&per_page={{ suffix }}{% endif %}&page=1">首页</a>
+    </li>
+    <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+      <a class="page-link" href="?{{ page_qs }}{% if suffix %}&per_page={{ suffix }}{% endif %}{% if page_obj.has_previous %}&page={{ page_obj.previous_page_number }}{% endif %}">上一页</a>
+    </li>
+    <li class="page-item disabled">
+      <span class="page-link">第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 页</span>
+    </li>
+    <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+      <a class="page-link" href="?{{ page_qs }}{% if suffix %}&per_page={{ suffix }}{% endif %}{% if page_obj.has_next %}&page={{ page_obj.next_page_number }}{% endif %}">下一页</a>
+    </li>
+    <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+      <a class="page-link" href="?{{ page_qs }}{% if suffix %}&per_page={{ suffix }}{% endif %}&page={{ page_obj.paginator.num_pages }}">末页</a>
+    </li>
+    {% endwith %}
+  </ul>
+</nav>
+{% endif %}

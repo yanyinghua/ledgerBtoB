@@ -1,0 +1,81 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}业务员开票回款明细 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>业务员开票回款明细</h5>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-6 col-md-2">
+      <label class="form-label">年份</label>
+      <select name="year" class="form-select">
+        <option value="">全部</option>
+        {% for y in years %}<option value="{{ y }}" {% if year == y|stringformat:'i' %}selected{% endif %}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if role != '业务员' %}
+    <div class="col-6 col-md-3">
+      <label class="form-label">业务员</label>
+      <select name="salesperson" class="form-select">
+        <option value="">全部</option>
+        {% for s in sp_choices %}<option value="{{ s }}" {% if sp_filter == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="col-6 col-md-3">
+      <label class="form-label">客户</label>
+      <input list="perfunitlist" name="unit_name" class="form-control" value="{{ cu_filter }}" placeholder="输入或选择客户">
+      <datalist id="perfunitlist">
+        {% for u in unit_choices %}<option value="{{ u }}">{% endfor %}
+      </datalist>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" name="expand" value="1" id="expandChk" {% if expand %}checked{% endif %}>
+        <label class="form-check-label" for="expandChk">展开到客户</label>
+      </div>
+    </div>
+    <div class="col-6 col-md-2 d-grid"><button class="btn btn-primary">查询</button></div>
+    <div class="col-12 col-md-2 d-grid">
+      <a class="btn btn-success" href="{% url 'sales_perf_export' %}?year={{ year }}&salesperson={{ sp_filter }}&unit_name={{ cu_filter|urlencode }}&expand={% if expand %}1{% else %}0{% endif %}">导出 Excel</a>
+    </div>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "salesperson" "业务员" %}</th>
+        {% if expand %}<th>{% sort_link sort "unit" "客户" %}</th>{% endif %}
+        <th class="text-end">{% sort_link sort "invoice" "开票额" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "collect" "回款额" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "unpaid" "未回款额" "desc" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.salesperson }}</td>
+        {% if expand %}<td><a href="{% url 'statement' %}?unit_name={{ r.unit|urlencode }}{% if year %}&year={{ year }}{% endif %}&back={{ request.get_full_path|urlencode }}">{{ r.unit }}</a></td>{% endif %}
+        <td class="text-end">{{ r.invoice|cny }}</td>
+        <td class="text-end">{{ r.collect|cny }}</td>
+        <td class="text-end text-danger">{{ r.unpaid|cny }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="{% if expand %}5{% else %}4{% endif %}" class="text-center text-muted">暂无数据</td></tr>
+      {% endfor %}
+      {% if rows %}
+      <tr class="table-info">
+        <td colspan="{% if expand %}2{% else %}1{% endif %}">合计</td>
+        <td class="text-end">{{ totals.invoice|cny }}</td>
+        <td class="text-end">{{ totals.collect|cny }}</td>
+        <td class="text-end">{{ totals.unpaid|cny }}</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted small">开票额为红字面值合计：按销项发票(借)汇总，仅排除已作废，红冲（红字负数）按票面正数加计；回款额按贷方/收入/承兑签收汇总；未回款额=开票额−回款额。</p>
+{% endblock %}

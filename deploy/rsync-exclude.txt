@@ -1,0 +1,32 @@
+# rsync 同步排除清单（deploy/local-deploy.sh 使用）
+#
+# ⚠ 重要：local-deploy.sh 用的是 rsync --delete，服务器上凡是本地不存在、
+#   又未在此列出的文件/目录都会被删除。新增任何"仅存在于服务器"的运行时
+#   数据（数据库、导出、日志、备份等）时，必须同步在此追加排除项。
+
+# --- 版本库 / 虚拟环境 ---
+.git
+venv
+
+# --- 数据库（生产数据，绝不可被覆盖或删除）---
+db.sqlite3
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3.bak
+
+# --- 运行时数据目录（服务器侧生成，本地无对应内容）---
+backups/
+logs/
+media/
+staticfiles/
+exports/
+reconcile_unmatched/
+
+# --- 环境变量（生产用 /etc/ledger/env，仓库内的绝不可覆盖）---
+.env
+
+# --- Python 编译产物 ---
+__pycache__
+*.pyc
+*.pyo

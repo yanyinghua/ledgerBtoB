@@ -1,0 +1,13 @@
+{% extends 'books/base.html' %}
+{% block title %}已停用写入{% endblock %}
+{% block content %}
+<div class="container mt-5" style="max-width: 680px;">
+  <div class="alert alert-danger">
+    <h5 class="alert-heading">当前为只读模式，无法保存数据</h5>
+    <p class="mb-2">{{ status.message }}</p>
+    <hr>
+    <p class="mb-0">已录入的数据仍可查看和导出，不会丢失。激活授权后即可恢复写入。</p>
+  </div>
+  <a class="btn btn-primary" href="{% url 'licensing:license' %}">前往授权管理</a>
+</div>
+{% endblock %}

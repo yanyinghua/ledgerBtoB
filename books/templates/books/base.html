@@ -1,0 +1,141 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}往来账管理系统{% endblock %}</title>
+  <link href="{% static 'books/vendor/bootstrap.min.css' %}" rel="stylesheet">
+  <style>
+    body { background: #f5f6f8; }
+    .navbar-brand { font-weight: 600; }
+    .table-sm td, .table-sm th { padding: .35rem .5rem; }
+    .sticky-foot { position: sticky; bottom: 0; background: #fff; }
+    /* 客户往来明细：固定行高 + 固定列宽，超出省略并显示完整内容于 title */
+    .statement-table { table-layout: fixed; }
+    .statement-table th, .statement-table td {
+      height: 38px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .statement-table td.remark-cell input.remark-edit { width: 100%; }
+    /* 表格向下滚动时固定表头。
+       注意：.table-responsive 的 overflow-x:auto 会使其成为纵向滚动容器，
+       内部 sticky 会相对它定位而失效，故宽屏下放开横向限制（表格本身在视口内），
+       窄屏保留横向滑动。border-collapse 下表头边框会丢失，用 inset 阴影补回。 */
+    @media (min-width: 992px) {
+      .table-responsive { overflow-x: visible; }
+    }
+    .table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      box-shadow: inset 0 -1px 0 #dee2e6;
+    }
+    /* 表头排序链接：▲/▼ 表示当前排序列，⇅ 表示可排序但未生效 */
+    .sort-link { display: inline-block; }
+    .sort-ind { font-size: .8em; margin-left: .15rem; }
+    @media print {
+      .sort-ind { display: none !important; }
+      .sort-link { color: inherit !important; text-decoration: none !important; }
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{% url 'home' %}">往来账管理系统</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navmenu"
+            aria-controls="navmenu" aria-expanded="false" aria-label="切换导航">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navmenu">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">首页</a></li>
+        {% if can_view %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'order_list' %}">订单管理</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'order_dashboard' %}">应收应付看板</a></li>
+        {% if is_exec_or_admin %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'admin_authorize' %}">用户授权</a></li>
+        {% endif %}
+        {% endif %}
+        {% if user_role == '管理员' %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'import_upload' %}">导入数据</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'import_lakala' %}">导入拉卡拉订单</a></li>
+        {% endif %}
+        <li class="nav-item"><a class="nav-link" href="{% url 'import_list' %}">导入记录</a></li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" id="dataMenu" role="button"
+             data-bs-toggle="dropdown" aria-expanded="false">基础数据</a>
+          <ul class="dropdown-menu" aria-labelledby="dataMenu">
+            {% if can_view %}
+            <li><a class="dropdown-item" href="{% url 'accountname_list' %}">户名匹配映射</a></li>
+            <li><a class="dropdown-item" href="{% url 'accountname_review' %}">待复核户名</a></li>
+            {% endif %}
+            {% if is_admin %}
+            <li><a class="dropdown-item" href="{% url 'invited_list' %}">邀请白名单</a></li>
+            {% endif %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{% url 'namemap_list' %}">名称映射库（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'customer_list' %}">客户-业务员映射（旧）</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" id="moreMenu" role="button"
+             data-bs-toggle="dropdown" aria-expanded="false">更多功能</a>
+          <ul class="dropdown-menu" aria-labelledby="moreMenu">
+            {% if is_admin %}
+            <li><a class="dropdown-item" href="{% url 'sales_perf' %}">业务员开票回款明细（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'invoice_search' %}">发票检索（旧）</a></li>
+            <li><hr class="dropdown-divider"></li>
+            {% endif %}
+            <li><a class="dropdown-item" href="{% url 'aging' %}">账期管理（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'reconcile' %}">对账单管理（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'collection' %}">分业务员客户催款管理（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'deposit' %}">保证金管理（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'acceptance' %}">票据检索（承兑/迪链）</a></li>
+            <li><a class="dropdown-item" href="{% url 'acceptance_report' %}">承兑收付款统计报表</a></li>
+            <li><a class="dropdown-item" href="{% url 'global_search' %}">综合查询</a></li>
+          </ul>
+        </li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'password_change' %}">修改密码</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}" target="_blank">后台管理</a></li>
+      </ul>
+      <span class="navbar-text me-3">当前用户：{{ user.get_username }}（{{ user_role }}）</span>
+      <form method="post" action="{% url 'logout' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-light btn-sm">注销</button>
+      </form>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid py-3">
+  {% if messages %}
+    {% for m in messages %}
+      <div class="alert alert-{{ m.tags }} alert-dismissible fade show" role="alert">
+        {{ m }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% if license_status.state == 'trial' %}
+  <div class="alert alert-warning rounded-0 mb-0 text-center small">
+    试用中，剩余 {{ license_status.days_left }} 天。到期后转入只读（仍可查看与导出），
+    <a href="{% url 'licensing:license' %}">激活授权</a>。
+  </div>
+  {% elif license_status.readonly %}
+  <div class="alert alert-danger rounded-0 mb-0 text-center small">
+    {{ license_status.message }}：当前为只读模式，数据可查看、可导出，但无法写入。
+    <a class="fw-bold" href="{% url 'licensing:license' %}">前往激活</a>
+  </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</div>
+
+<script src="{% static 'books/vendor/bootstrap.bundle.min.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

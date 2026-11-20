@@ -1,0 +1,141 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}综合查询 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>综合查询（全局检索）</h5>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2">
+    <div class="col-12 col-md-4">
+      <label class="form-label">关键字</label>
+      <input name="q" class="form-control" value="{{ filters.q }}" placeholder="单位/备注/经手人/发票号">
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label">单位名称</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}">
+      <datalist id="unitlist">{% for u in unit_choices %}<option value="{{ u }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">业务类型</label>
+      <select name="biz_type" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in biz_types %}<option value="{{ v }}" {% if filters.biz_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">来源类型</label>
+      <select name="source_type" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in source_types %}<option value="{{ v }}" {% if filters.source_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">标记</label>
+      <select name="tag" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in tags %}<option value="{{ v }}" {% if filters.tag == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">日期起</label>
+      <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">日期止</label>
+      <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">金额≥</label>
+      <input name="amount_min" class="form-control" value="{{ filters.amount_min }}" placeholder="借或贷">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">金额≤</label>
+      <input name="amount_max" class="form-control" value="{{ filters.amount_max }}">
+    </div>
+    <div class="col-12 d-flex gap-2">
+      <button class="btn btn-primary">查询</button>
+      <a class="btn btn-outline-secondary" href="{% url 'global_search' %}">重置</a>
+      <a class="btn btn-success" href="{% url 'global_search_export' %}?{{ querystring }}">导出 Excel</a>
+      {% if role == '管理员' %}
+        {% if edit %}
+          <a class="btn btn-outline-primary" href="?{{ querystring|cut:'&edit=1' }}">退出编辑</a>
+        {% else %}
+          <a class="btn btn-outline-primary" href="?{{ querystring }}&edit=1">编辑模式</a>
+        {% endif %}
+      {% endif %}
+      <span class="ms-auto align-self-center text-muted">共 {{ count }} 条</span>
+    </div>
+  </div>
+</form>
+
+{% if edit %}
+<form method="post" action="{% url 'record_tag_update' %}">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}">
+{% endif %}
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "date" "日期" "desc" %}</th>
+        <th>{% sort_link sort "unit" "单位名称" %}</th>
+        <th>{% sort_link sort "biz_type" "业务类型" %}</th>
+        <th>{% sort_link sort "category" "类别" %}</th>
+        <th class="text-end">{% sort_link sort "debit" "借方" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "credit" "贷方" "desc" %}</th>
+        <th>{% sort_link sort "tag" "标记" %}</th>
+        <th>{% sort_link sort "handler" "经手人" %}</th>
+        <th>{% sort_link sort "invoice_no" "发票号" %}</th>
+        <th>{% sort_link sort "remark" "备注" %}</th>
+        <th>{% sort_link sort "source" "来源" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in page_obj %}
+      <tr>
+        <td>{{ r.occur_date|date:'Y-m-d'|default:'' }}</td>
+        <td><a href="{% url 'statement' %}?unit_name={{ r.unit_name|urlencode }}" target="_blank" rel="noopener" title="查看该单位往来明细">{{ r.unit_name }}</a></td>
+        <td>{{ r.biz_type }}</td>
+        <td>{{ r.category }}</td>
+        <td class="text-end">{{ r.debit|cny }}</td>
+        <td class="text-end">{{ r.credit|cny }}</td>
+        <td>{% if edit %}<select name="tag_{{ r.id }}" class="form-select form-select-sm">{% for v,l in tags %}<option value="{{ v }}" {% if r.tag == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>{% else %}{{ r.tag }}{% endif %}</td>
+        <td>{{ r.handler }}</td>
+        <td>{% if r.invoice_number %}<a href="{% url 'invoice_detail' r.id %}" target="_blank" rel="noopener" title="查看该发票货物明细">{{ r.invoice_number }}</a>{% else %}{{ r.invoice_number }}{% endif %}</td>
+        <td>{% if edit %}<input type="text" class="form-control form-control-sm remark-edit" name="remark_{{ r.id }}" value="{{ r.remark }}" data-pk="{{ r.id }}" style="min-width:150px">{% else %}{{ r.remark }}{% endif %}</td>
+        <td>{{ r.get_source_type_display }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="11" class="text-center text-muted">无匹配记录</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if edit %}
+  <button type="submit" class="btn btn-success">保存标注</button>
+</form>
+{% endif %}
+
+{% include "books/_pagination.html" with page_qs=querystring %}
+
+{% if edit %}
+<script>
+document.querySelectorAll('.remark-edit').forEach(function (el) {
+  el.addEventListener('blur', function () {
+    var fd = new FormData();
+    fd.append('remark_' + el.dataset.pk, el.value);
+    fd.append('csrfmiddlewaretoken', document.querySelector('input[name=csrfmiddlewaretoken]').value);
+    fetch('{% url "record_tag_update" %}', {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) {
+          el.classList.add('is-valid');
+          setTimeout(function () { el.classList.remove('is-valid'); }, 1200);
+        }
+      });
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends 'books/base.html' %}
+{% load sortable %}
+{% block title %}导入记录 - 往来账管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">导入记录</h5>
+  {% if role == '管理员' %}
+  <div>
+    <form method="post" action="{% url 'namemap_apply_all' %}" class="d-inline" style="position:relative;">
+      {% csrf_token %}
+      <details>
+        <summary class="btn btn-warning btn-sm" style="list-style:none; cursor:pointer;">应用映射库到历史 ▾</summary>
+        <div class="card position-absolute mt-1 p-2 shadow" style="z-index:1050; min-width:250px;">
+          <div class="small text-muted mb-1">勾选来源类型（不选=全部主表；经手人/期初/客户表始终归一）</div>
+          {% for val, label in source_type_choices %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="source_types" value="{{ val }}" id="st_il_{{ val }}" checked>
+            <label class="form-check-label" for="st_il_{{ val }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-warning btn-sm w-100 mt-2"
+            onclick="return confirm('将按当前映射库把选中来源的单位名称归一，确定？');">应用</button>
+        </div>
+      </details>
+    </form>
+    <a class="btn btn-primary btn-sm" href="{% url 'import_upload' %}">+ 新导入</a>
+  </div>
+  {% endif %}
+</div>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "id" "ID" "desc" %}</th>
+        <th>{% sort_link sort "source_type" "来源类型" %}</th>
+        <th>{% sort_link sort "file_name" "文件名" %}</th>
+        <th>{% sort_link sort "uploaded_by" "导入人" %}</th>
+        <th>{% sort_link sort "uploaded_at" "导入时间" "desc" %}</th>
+        <th>{% sort_link sort "status" "状态" %}</th>
+        <th>{% sort_link sort "row_count" "行数" "desc" %}</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in uploads %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td>{{ u.get_source_type_display }}</td>
+        <td>{{ u.file_name }}</td>
+        <td>{{ u.uploaded_by }}</td>
+        <td>{{ u.uploaded_at|date:'Y-m-d H:i' }}</td>
+        <td>
+          {% if u.status == 'success' %}<span class="badge bg-success">成功</span>
+          {% elif u.status == 'partial' %}<span class="badge bg-warning text-dark">部分</span>
+          {% else %}<span class="badge bg-danger">失败</span>{% endif %}
+        </td>
+        <td>{{ u.row_count }}</td>
+        <td>
+          {% if role == '管理员' %}
+          <form method="post" action="{% url 'import_rerun' u.id %}" class="d-inline">
+            {% csrf_token %}<button class="btn btn-sm btn-outline-secondary" title="按当前列映射重跑">重跑</button>
+          </form>
+          <form method="post" action="{% url 'import_delete' u.id %}" class="d-inline"
+                onsubmit="return confirm('确认删除该导入及其主表记录？');">
+            {% csrf_token %}<button class="btn btn-sm btn-outline-danger">删除</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="text-center text-muted">暂无导入记录</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

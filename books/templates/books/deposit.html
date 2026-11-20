@@ -1,0 +1,116 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}保证金管理 - 往来账管理系统{% endblock %}
+{% block content %}
+<h5>保证金管理</h5>
+
+<form method="get" class="card shadow-sm mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label">单位名称</label>
+      <input list="unitlist" name="unit_name" class="form-control" value="{{ filters.unit_name }}">
+      <datalist id="unitlist">{% for u in unit_choices %}<option value="{{ u }}">{% endfor %}</datalist>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">年份</label>
+      <select name="year" class="form-select">
+        <option value="">全部</option>
+        {% for y in years %}<option value="{{ y }}" {% if filters.year == y|stringformat:'i' %}selected{% endif %}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">业务类型</label>
+      <select name="biz_type" class="form-select">
+        <option value="">全部</option>
+        {% for v, l in biz_types %}<option value="{{ v }}" {% if filters.biz_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">起始日期</label>
+      <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">截止日期</label>
+      <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+    </div>
+    <div class="col-6 col-md-2 d-grid"><button class="btn btn-primary">查询</button></div>
+    <div class="col-6 col-md-2 d-grid">
+      <a class="btn btn-success" href="{% url 'deposit_export' %}?unit_name={{ filters.unit_name|urlencode }}&year={{ filters.year }}&biz_type={{ filters.biz_type }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">导出 Excel</a>
+    </div>
+  </div>
+</form>
+
+<h6>按单位汇总</h6>
+<div class="table-responsive mb-4">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sum_sort "unit_name" "单位名称" %}</th>
+        <th class="text-end">{% sort_link sum_sort "recv" "收保证金" "desc" %}</th>
+        <th class="text-end">{% sort_link sum_sort "ret" "退保证金" "desc" %}</th>
+        <th class="text-end">{% sort_link sum_sort "balance" "结余" "desc" %}</th>
+        <th class="text-end">{% sort_link sum_sort "cnt" "笔数" "desc" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in summary %}
+      <tr>
+        <td><a href="{% url 'statement' %}?unit_name={{ s.unit_name|urlencode }}" target="_blank" rel="noopener" title="查看该单位往来明细">{{ s.unit_name }}</a></td>
+        <td class="text-end">{{ s.recv|cny }}</td>
+        <td class="text-end">{{ s.ret|cny }}</td>
+        <td class="text-end {% if s.balance > 0 %}text-danger{% endif %}">{{ s.balance|cny }}</td>
+        <td class="text-end">{{ s.cnt }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center text-muted">暂无保证金记录（可在「主表标记编辑」中将记录标记为"保证金"）</td></tr>
+      {% endfor %}
+      {% if summary %}
+      <tr class="table-info">
+        <td>合计</td>
+        <td class="text-end">{{ totals.recv|cny }}</td>
+        <td class="text-end">{{ totals.ret|cny }}</td>
+        <td class="text-end">{{ totals.balance|cny }}</td>
+        <td class="text-end"></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<h6>明细</h6>
+<div class="table-responsive">
+  <table class="table table-sm table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link det_sort "date" "日期" "desc" %}</th>
+        <th>{% sort_link det_sort "unit" "单位名称" %}</th>
+        <th>{% sort_link det_sort "biz_type" "业务类型" %}</th>
+        <th class="text-end">{% sort_link det_sort "debit" "借方" "desc" %}</th>
+        <th class="text-end">{% sort_link det_sort "credit" "贷方" "desc" %}</th>
+        <th>{% sort_link det_sort "handler" "经手人" %}</th>
+        <th>{% sort_link det_sort "invoice_no" "发票号" %}</th>
+        <th>{% sort_link det_sort "remark" "备注" %}</th>
+        <th>{% sort_link det_sort "source_type" "来源" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in details %}
+      <tr>
+        <td>{{ r.date|date:'Y-m-d'|default:'' }}</td>
+        <td><a href="{% url 'statement' %}?unit_name={{ r.unit|urlencode }}" target="_blank" rel="noopener" title="查看该单位往来明细">{{ r.unit }}</a></td>
+        <td>{{ r.biz_type }}</td>
+        <td class="text-end">{{ r.debit|cny }}</td>
+        <td class="text-end">{{ r.credit|cny }}</td>
+        <td>{{ r.handler }}</td>
+        <td>{% if r.invoice_no %}<a href="{% url 'invoice_detail' r.id %}" target="_blank" rel="noopener" title="查看该发票货物明细">{{ r.invoice_no }}</a>{% else %}{{ r.invoice_no }}{% endif %}</td>
+        <td>{{ r.remark }}</td>
+        <td>{{ r.source_type }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="text-center text-muted">暂无明细</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

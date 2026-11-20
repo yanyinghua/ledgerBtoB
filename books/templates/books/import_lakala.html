@@ -1,0 +1,22 @@
+{% extends 'books/base.html' %}
+{% block title %}导入拉卡拉订单 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">导入拉卡拉订单（Excel .xlsx）</h5>
+{% if messages %}
+  {% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}
+{% endif %}
+<div class="card" style="max-width:520px">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">订单表文件</label>
+        <input type="file" name="file" class="form-control" accept=".xlsx" required>
+        <div class="form-text">仅支持 .xlsx。列名通过「基础数据 → 列映射」配置，占位映射已就绪。</div>
+      </div>
+      <button type="submit" class="btn btn-primary">导入</button>
+      <a href="{% url 'order_list' %}" class="btn btn-outline-secondary">查看订单</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

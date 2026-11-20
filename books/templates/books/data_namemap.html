@@ -1,0 +1,59 @@
+{% extends 'books/base.html' %}
+{% load sortable %}
+{% block title %}名称映射库 - 往来账管理系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0">名称映射库</h5>
+  {% if user_role == '管理员' %}
+  <div>
+    <form method="post" action="{% url 'namemap_apply_all' %}" class="d-inline" style="position:relative;">
+      {% csrf_token %}
+      <details>
+        <summary class="btn btn-warning btn-sm" style="list-style:none; cursor:pointer;">应用映射库到历史 ▾</summary>
+        <div class="card position-absolute mt-1 p-2 shadow" style="z-index:1050; min-width:250px;">
+          <div class="small text-muted mb-1">勾选来源类型（不选=全部主表；经手人/期初/客户表始终归一）</div>
+          {% for val, label in source_type_choices %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="source_types" value="{{ val }}" id="st_nm_{{ val }}" checked>
+            <label class="form-check-label" for="st_nm_{{ val }}">{{ label }}</label>
+          </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-warning btn-sm w-100 mt-2"
+            onclick="return confirm('将按当前映射库把选中来源的单位名称归一，确定？');">应用</button>
+        </div>
+      </details>
+    </form>
+    <a class="btn btn-primary btn-sm" href="{% url 'namemap_add' %}">+ 新增</a>
+  </div>
+  {% endif %}
+</div>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>{% sort_link sort "raw_name" "原始名称" %}</th>
+        <th>{% sort_link sort "canonical_name" "规范名称" %}</th>
+        <th>{% sort_link sort "tax_no" "税号" %}</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ it.raw_name }}</td>
+        <td>{{ it.canonical_name }}</td>
+        <td>{{ it.tax_no }}</td>
+        <td>
+          {% if user_role == '管理员' %}
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'namemap_edit' it.id %}">编辑</a>
+          <a class="btn btn-sm btn-outline-danger" href="{% url 'namemap_delete' it.id %}">删除</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="text-center text-muted">暂无数据</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
