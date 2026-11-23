@@ -3222,3 +3222,79 @@ class B2bHierarchyTest(TestCase):
         u.profile.account_status = '待授权'
         u.profile.save()
         self.assertEqual(list(_visible_orders(u, _Order.objects.all())), [])
+
+
+# ===========================================================================
+# 腾讯云短信后端测试（mock SDK，不真实发送）
+# ===========================================================================
+import os as _os
+from unittest import mock as _mock
+
+from books import sms as _sms_mod
+
+
+class B2bTencentSmsTest(TestCase):
+    _ENV = {
+        'TENCENTCLOUD_SECRET_ID': 'fake-id',
+        'TENCENTCLOUD_SECRET_KEY': 'fake-key',
+        'TENCENT_SMS_SDK_APP_ID': '1400006666',
+        'TENCENT_SMS_SIGN_NAME': '测试签名',
+        'TENCENT_SMS_TEMPLATE_ID': '449739',
+    }
+
+    def test_to_e164(self):
+        self.assertEqual(_sms_mod._to_e164('13900001234'), '+8613900001234')
+        self.assertEqual(_sms_mod._to_e164('+8613900001234'), '+8613900001234')
+        self.assertEqual(_sms_mod._to_e164('8613900001234'), '+8613900001234')
+
+    def test_missing_config_returns_false(self):
+        with _mock.patch.dict(_os.environ, {}, clear=True):
+            self.assertFalse(_sms_mod._send_tencent('13900001234', '123456', '注册'))
+
+    def _fake_response(self, code, serial='SER1'):
+        status = _mock.Mock()
+        status.Code = code
+        status.Message = 'OK' if code == 'Ok' else 'failed'
+        status.SerialNo = serial
+        resp = _mock.Mock()
+        resp.SendStatusSet = [status]
+        resp.to_json_string.return_value = '{}'
+        return resp
+
+    def test_send_success(self):
+        with _mock.patch.dict(_os.environ, self._ENV, clear=True):
+            with _mock.patch('tencentcloud.sms.v20210111.sms_client.SmsClient') as MockClient:
+                MockClient.return_value.SendSms.return_value = self._fake_response('Ok')
+                self.assertTrue(_sms_mod._send_tencent('13900001234', '654321', '注册'))
+                req = MockClient.return_value.SendSms.call_args[0][0]
+                self.assertEqual(req.PhoneNumberSet, ['+8613900001234'])
+                self.assertEqual(req.TemplateParamSet, ['654321'])
+                self.assertEqual(req.TemplateId, '449739')
+
+    def test_send_api_failure(self):
+        with _mock.patch.dict(_os.environ, self._ENV, clear=True):
+            with _mock.patch('tencentcloud.sms.v20210111.sms_client.SmsClient') as MockClient:
+                MockClient.return_value.SendSms.return_value = self._fake_response(
+                    'FailedOperation.SignatureIncorrectOrUnapproved')
+                self.assertFalse(_sms_mod._send_tencent('13900001234', '123456', '登录'))
+
+    def test_empty_status(self):
+        with _mock.patch.dict(_os.environ, self._ENV, clear=True):
+            with _mock.patch('tencentcloud.sms.v20210111.sms_client.SmsClient') as MockClient:
+                resp = _mock.Mock()
+                resp.SendStatusSet = []
+                resp.to_json_string.return_value = '{}'
+                MockClient.return_value.SendSms.return_value = resp
+                self.assertFalse(_sms_mod._send_tencent('13900001234', '123456', '注册'))
+
+    def test_sdk_exception_is_caught(self):
+        from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+        with _mock.patch.dict(_os.environ, self._ENV, clear=True):
+            with _mock.patch('tencentcloud.sms.v20210111.sms_client.SmsClient') as MockClient:
+                MockClient.return_value.SendSms.side_effect = TencentCloudSDKException('boom')
+                self.assertFalse(_sms_mod._send_tencent('13900001234', '123456', '注册'))
+
+    def test_backend_selection(self):
+        # default console
+        with _mock.patch.object(_sms_mod.settings, 'DJANGO_SMS_BACKEND', 'console', create=True):
+            self.assertTrue(_sms_mod.send_sms('13900001234', '123456', '注册'))

@@ -3,3 +3,4 @@ pandas>=2.0
 openpyxl>=3.1
 psycopg2-binary>=2.9
 cryptography>=3.4        # 授权码 ed25519 签名校验
+tencentcloud-sdk-python-sms>=3.0  # 腾讯云短信后端（DJANGO_SMS_BACKEND=tencent 时启用）
