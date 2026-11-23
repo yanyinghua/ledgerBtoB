@@ -106,6 +106,16 @@ TARGET_FIELD_CHOICES = [
     ('payment_amount', '收付款金额'),
     ('payment_ref', '收付款流水号'),
     ('payment_account_name', '收款账户名'),
+    # 归一扩展字段（0028）
+    ('platform_owner_id', '货主ID'),
+    ('platform_customer_id', '平台客户ID'),
+    ('platform_shop_id', '平台店铺ID'),
+    ('payer_name', '付款人名称'),
+    ('payer_account', '付款人账号'),
+    ('pay_method', '收款方式'),
+    ('channel_type', '线上/线下'),
+    ('owner_name', '货主名称'),
+    ('receiving_account_name_raw', '收款户名(原始)'),
 ]
 
 # ---------------------------------------------------------------------------
@@ -127,6 +137,18 @@ MATCH_STATUS_CHOICES = [
 MATCH_SOURCE_CHOICES = [
     ('精确', '精确'), ('归一化', '归一化'), ('别名', '别名'),
     ('模糊', '模糊'), ('人工', '人工'), ('API', 'API'),
+]
+# 收款方式（独立于支付载体 channel 与公私户 account_type）
+PAY_METHOD_CHOICES = [
+    ('平台扫码', '平台扫码'), ('公对公', '公对公'), ('私对公', '私对公'),
+    ('微信', '微信'), ('支付宝', '支付宝'), ('现金', '现金'),
+]
+# 线上/线下渠道类型（不能从收款方式推导：微信既可能线上扫码也可能线下转账）
+CHANNEL_TYPE_CHOICES = [('线上', '线上'), ('线下', '线下')]
+# 客户归一字典的锚点类型
+CUSTOMER_ALIAS_TYPE_CHOICES = [
+    ('店铺名', '店铺名'), ('平台店铺ID', '平台店铺ID'),
+    ('付款人名称', '付款人名称'), ('付款人账号', '付款人账号'),
 ]
 ACCOUNT_STATUS_CHOICES = [
     ('待授权', '待授权'), ('已授权', '已授权'), ('已禁用', '已禁用'),
@@ -753,8 +775,12 @@ class ReceivingAccount(models.Model):
     account_name = models.CharField('账户名称', max_length=200, db_index=True)
     account_no = models.CharField('账号', max_length=100, blank=True, db_index=True)
     channel = models.CharField('渠道', max_length=30, choices=CHANNEL_CHOICES, default='其他')
+    channel_type = models.CharField('线上/线下', max_length=10, choices=CHANNEL_TYPE_CHOICES,
+                                    blank=True, help_text='账户默认渠道属性，可空（一个账户可能两者都用）')
     account_type = models.CharField('账户类型', max_length=10,
                                     choices=ACCOUNT_TYPE_CHOICES, default='对公')
+    account_holder = models.CharField('收款户名', max_length=200, blank=True,
+                                      help_text='账户名与实际收款户名可能不同')
     owner_merchant = models.ForeignKey(Merchant, null=True, blank=True, on_delete=models.SET_NULL,
                                        related_name='accounts', verbose_name='归属商户')
     is_active = models.BooleanField('启用', default=True)
@@ -800,6 +826,13 @@ class Order(models.Model):
                                  choices=[('销售', '销售'), ('采购', '采购')], db_index=True)
     order_date = models.DateField('订单日期', null=True, blank=True, db_index=True)
     counterparty_raw_name = models.CharField('订单户名(原始)', max_length=200, db_index=True)
+    # 归一扩展（0028）：平台原始 ID + 归一后的主体/货主
+    platform_owner_id = models.CharField('货主ID(原始)', max_length=100, blank=True, db_index=True)
+    platform_customer_id = models.CharField('平台客户ID(原始)', max_length=100, blank=True, db_index=True)
+    owner = models.ForeignKey('Owner', null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name='orders', verbose_name='货主')
+    customer_entity = models.ForeignKey('CustomerEntity', null=True, blank=True, on_delete=models.SET_NULL,
+                                        related_name='orders', verbose_name='客户主体')
     # 4 目标匹配结果
     counterparty = models.ForeignKey(Counterparty, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name='orders', verbose_name='往来主体')
@@ -971,3 +1004,168 @@ class SmsCode(models.Model):
 
     def __str__(self):
         return f'{self.phone} {self.purpose} {self.code}'
+
+
+# ===========================================================================
+# 往来单位归一（0028）：客户主体↔店铺/付款人，货主↔收款账户，独立收款明细
+# 与旧 Counterparty / Merchant / AccountNameMapping 并存，互不干扰。
+# ===========================================================================
+class CustomerEntity(models.Model):
+    """客户主体：多个店铺/付款人归一到同一税号主体。"""
+    name = models.CharField('主体名称', max_length=200, db_index=True)
+    tax_no = models.CharField('税号(主体ID)', max_length=30, blank=True, db_index=True)
+    platform_customer_id = models.CharField('平台客户ID', max_length=100, blank=True, db_index=True)
+    party_type = models.CharField('主体类型', max_length=10,
+                                  choices=[('客户', '客户'), ('供应商', '供应商')], default='客户')
+    is_active = models.BooleanField('启用', default=True)
+    remark = models.TextField('备注', blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '客户主体'
+        verbose_name_plural = '客户主体'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(fields=['tax_no'], condition=models.Q(tax_no__gt=''),
+                                    name='uniq_customer_entity_taxno'),
+            models.UniqueConstraint(fields=['platform_customer_id'],
+                                    condition=models.Q(platform_customer_id__gt=''),
+                                    name='uniq_customer_entity_platform_id'),
+        ]
+
+    def __str__(self):
+        return f'{self.name}' + (f' [{self.tax_no}]' if self.tax_no else '')
+
+
+class CustomerAlias(models.Model):
+    """客户归一字典：店铺名/平台店铺ID/付款人名称/付款人账号 → 客户主体。"""
+    alias_type = models.CharField('锚点类型', max_length=20, choices=CUSTOMER_ALIAS_TYPE_CHOICES)
+    alias_value = models.CharField('原始值', max_length=200)
+    normalized_value = models.CharField('归一化值', max_length=200, db_index=True)
+    entity = models.ForeignKey(CustomerEntity, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='aliases', verbose_name='客户主体')
+    platform_shop_id = models.CharField('平台店铺ID', max_length=100, blank=True)
+    is_manual = models.BooleanField('人工锁定', default=False,
+                                    help_text='勾选后自动匹配永不覆盖')
+    is_active = models.BooleanField('启用', default=True)
+    use_count = models.IntegerField('使用次数', default=0)
+    last_seen_at = models.DateTimeField('最近出现', null=True, blank=True)
+    note = models.TextField('备注', blank=True)
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   verbose_name='创建人')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '客户归一字典'
+        verbose_name_plural = '客户归一字典'
+        ordering = ['alias_type', 'normalized_value']
+        constraints = [
+            models.UniqueConstraint(fields=['alias_type', 'normalized_value'],
+                                    name='uniq_customer_alias_type_value'),
+        ]
+        indexes = [models.Index(fields=['normalized_value', 'alias_type'])]
+
+    def __str__(self):
+        return f'{self.alias_type}:{self.alias_value} → {self.entity or "?"}'
+
+
+class Owner(models.Model):
+    """货主：供货方/卖家，决定收款账户；货主ID为平台唯一标识。"""
+    platform_owner_id = models.CharField('货主ID', max_length=100, db_index=True)
+    name = models.CharField('货主名称', max_length=200, db_index=True)
+    tax_no = models.CharField('税号', max_length=30, blank=True, db_index=True)
+    is_active = models.BooleanField('启用', default=True)
+    remark = models.TextField('备注', blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '货主'
+        verbose_name_plural = '货主'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(fields=['platform_owner_id'],
+                                    condition=models.Q(platform_owner_id__gt=''),
+                                    name='uniq_owner_platform_id'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} [{self.platform_owner_id}]'
+
+
+class OwnerAccountMap(models.Model):
+    """货主-收款账户归一字典：(货主, 线上/线下, 收款方式) → 收款账户。"""
+    owner = models.ForeignKey(Owner, on_delete=models.CASCADE, related_name='account_maps',
+                              verbose_name='货主')
+    account = models.ForeignKey(ReceivingAccount, on_delete=models.CASCADE,
+                                related_name='owner_maps', verbose_name='收款账户')
+    channel_type = models.CharField('线上/线下', max_length=10, choices=CHANNEL_TYPE_CHOICES)
+    pay_method = models.CharField('收款方式', max_length=20, choices=PAY_METHOD_CHOICES)
+    priority = models.IntegerField('优先级', default=0)
+    is_default = models.BooleanField('默认账户', default=False)
+    is_active = models.BooleanField('启用', default=True)
+    note = models.TextField('备注', blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '货主收款账户字典'
+        verbose_name_plural = '货主收款账户字典'
+        ordering = ['owner', 'channel_type', 'pay_method', '-priority']
+        constraints = [
+            models.UniqueConstraint(fields=['owner', 'channel_type', 'pay_method', 'account'],
+                                    name='uniq_owner_channel_method_account'),
+        ]
+
+    def __str__(self):
+        return f'{self.owner} {self.channel_type} {self.pay_method} → {self.account}'
+
+
+class PaymentReceipt(models.Model):
+    """收款明细：独立导入（Excel/API），含付款人/收款账户/货主归一结果。"""
+    source_type = models.CharField('来源类型', max_length=20, default='payment_detail')
+    source_upload = models.ForeignKey(SourceUpload, null=True, blank=True, on_delete=models.SET_NULL,
+                                      verbose_name='导入来源')
+    raw_row = models.ForeignKey(RawImportRow, null=True, blank=True, on_delete=models.SET_NULL,
+                                related_name='payment_receipts', verbose_name='原始行')
+    external_ref = models.CharField('外部流水号', max_length=100, db_index=True)
+    channel_type = models.CharField('线上/线下', max_length=10, choices=CHANNEL_TYPE_CHOICES)
+    pay_method = models.CharField('收款方式', max_length=20, choices=PAY_METHOD_CHOICES)
+    pay_date = models.DateField('收款日期', null=True, blank=True, db_index=True)
+    payer_name = models.CharField('付款人名称', max_length=200, blank=True, db_index=True)
+    payer_account = models.CharField('付款人账号', max_length=100, blank=True, db_index=True)
+    amount = models.DecimalField('金额', max_digits=18, decimal_places=2, default=0)
+    receiving_account_name = models.CharField('收款户名(原始)', max_length=200, blank=True)
+    receiving_account = models.ForeignKey(ReceivingAccount, null=True, blank=True,
+                                          on_delete=models.SET_NULL, related_name='payment_receipts',
+                                          verbose_name='收款账户')
+    owner = models.ForeignKey(Owner, null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name='payment_receipts', verbose_name='货主')
+    entity = models.ForeignKey(CustomerEntity, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='payment_receipts', verbose_name='客户主体')
+    order = models.ForeignKey(Order, null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name='payment_receipts', verbose_name='关联订单')
+    match_status = models.CharField('匹配状态', max_length=20, choices=MATCH_STATUS_CHOICES,
+                                    default='未匹配', db_index=True)
+    note = models.TextField('备注', blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '收款明细'
+        verbose_name_plural = '收款明细'
+        ordering = ['-pay_date', '-id']
+        constraints = [
+            models.UniqueConstraint(fields=['source_type', 'external_ref'],
+                                    name='uniq_payment_receipt_source_ref'),
+        ]
+        indexes = [
+            models.Index(fields=['owner', 'pay_date']),
+            models.Index(fields=['entity', 'pay_date']),
+            models.Index(fields=['match_status']),
+        ]
+
+    def __str__(self):
+        return f'{self.pay_date} {self.payer_name} {self.amount}'

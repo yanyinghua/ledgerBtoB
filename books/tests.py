@@ -3298,3 +3298,77 @@ class B2bTencentSmsTest(TestCase):
         # default console
         with _mock.patch.object(_sms_mod.settings, 'DJANGO_SMS_BACKEND', 'console', create=True):
             self.assertTrue(_sms_mod.send_sms('13900001234', '123456', '注册'))
+
+
+# ===========================================================================
+# 往来单位归一模型测试（0028）
+# ===========================================================================
+from books.models import (
+    CustomerEntity as _CustomerEntity, CustomerAlias as _CustomerAlias,
+    Owner as _Owner, OwnerAccountMap as _OwnerAccountMap,
+    PaymentReceipt as _PaymentReceipt, ReceivingAccount as _ReceivingAccount,
+    CHANNEL_TYPE_CHOICES as _CHANNEL_TYPE_CHOICES,
+    PAY_METHOD_CHOICES as _PAY_METHOD_CHOICES,
+    CUSTOMER_ALIAS_TYPE_CHOICES as _CUSTOMER_ALIAS_TYPE_CHOICES,
+)
+from django.db import IntegrityError as _IntegrityError, transaction as _transaction
+
+
+class B2bNormalizationModelTest(TestCase):
+    def setUp(self):
+        self.entity = _CustomerEntity.objects.create(name='某某集团有限公司', tax_no='91420000XXXXXXXXXX')
+        self.owner = _Owner.objects.create(name='供货方甲', platform_owner_id='OWNER001')
+
+    def test_multi_shop_one_entity(self):
+        """一个主体的多个店铺/付款人归一到同一主体。"""
+        for t, v in [('店铺名', '好又多超市'), ('店铺名', '好又多二分店'),
+                     ('付款人名称', '张三'), ('平台店铺ID', 'SHOP001')]:
+            _CustomerAlias.objects.create(alias_type=t, alias_value=v,
+                                          normalized_value=v, entity=self.entity)
+        self.assertEqual(self.entity.aliases.count(), 4)
+
+    def test_alias_unique_per_type_value(self):
+        _CustomerAlias.objects.create(alias_type='店铺名', alias_value='X店',
+                                      normalized_value='X店', entity=self.entity)
+        with self.assertRaises(_IntegrityError), _transaction.atomic():
+            _CustomerAlias.objects.create(alias_type='店铺名', alias_value='X店',
+                                          normalized_value='X店', entity=self.entity)
+
+    def test_entity_tax_no_unique_when_present(self):
+        with self.assertRaises(_IntegrityError), _transaction.atomic():
+            _CustomerEntity.objects.create(name='另一个主体', tax_no=self.entity.tax_no)
+        # 空税号可多个
+        _CustomerEntity.objects.create(name='无税号主体A', tax_no='')
+        _CustomerEntity.objects.create(name='无税号主体B', tax_no='')
+
+    def test_owner_platform_id_unique(self):
+        with self.assertRaises(_IntegrityError), _transaction.atomic():
+            _Owner.objects.create(name='重复货主', platform_owner_id='OWNER001')
+
+    def test_owner_account_map_triplet(self):
+        acc_public = _ReceivingAccount.objects.create(account_name='对公账户', account_no='111',
+                                                      account_type='对公')
+        acc_wechat = _ReceivingAccount.objects.create(account_name='微信账户', account_no='222',
+                                                      account_type='对私')
+        _OwnerAccountMap.objects.create(owner=self.owner, account=acc_public,
+                                        channel_type='线下', pay_method='公对公')
+        _OwnerAccountMap.objects.create(owner=self.owner, account=acc_wechat,
+                                        channel_type='线上', pay_method='微信')
+        self.assertEqual(self.owner.account_maps.count(), 2)
+        # 同一三元组+同账户不可重复
+        with self.assertRaises(_IntegrityError), _transaction.atomic():
+            _OwnerAccountMap.objects.create(owner=self.owner, account=acc_public,
+                                            channel_type='线下', pay_method='公对公')
+
+    def test_payment_receipt_normalization_fks(self):
+        acc = _ReceivingAccount.objects.create(account_name='收款账户')
+        r = _PaymentReceipt.objects.create(external_ref='PAY001', channel_type='线下',
+            pay_method='公对公', payer_name='张三', payer_account='6222', amount='500.00',
+            receiving_account_name='收款账户', receiving_account=acc, owner=self.owner,
+            entity=self.entity)
+        self.assertEqual(r.owner, self.owner)
+        self.assertEqual(r.entity, self.entity)
+        self.assertEqual(r.receiving_account, acc)
+        with self.assertRaises(_IntegrityError), _transaction.atomic():
+            _PaymentReceipt.objects.create(external_ref='PAY001', channel_type='线上',
+                                           pay_method='微信', amount=1)

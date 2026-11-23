@@ -10,6 +10,7 @@ from books.models import (
     Operator, MappingStep, LogicRuleType, LogicRule, LoginLog, OperationLog,
     Department, SalespersonProfile, Merchant, ReceivingAccount, Counterparty,
     Order, OrderPayment, AccountNameMapping, AccountNameAlias, InvitedPhone, SmsCode,
+    CustomerEntity, CustomerAlias, Owner, OwnerAccountMap, PaymentReceipt,
 )
 from books.forms import MappingStepForm, LogicRuleForm
 
@@ -417,3 +418,46 @@ class SmsCodeAdmin(admin.ModelAdmin):
     list_display = ('phone', 'purpose', 'code', 'is_used', 'expires_at', 'sent_at')
     list_filter = ('purpose', 'is_used')
     search_fields = ('phone',)
+
+
+# ===========================================================================
+# 往来单位归一（0028）
+# ===========================================================================
+@admin.register(CustomerEntity)
+class CustomerEntityAdmin(admin.ModelAdmin):
+    list_display = ('name', 'tax_no', 'platform_customer_id', 'party_type', 'is_active')
+    list_filter = ('party_type', 'is_active')
+    search_fields = ('name', 'tax_no', 'platform_customer_id')
+
+
+@admin.register(CustomerAlias)
+class CustomerAliasAdmin(admin.ModelAdmin):
+    list_display = ('alias_type', 'alias_value', 'normalized_value', 'entity',
+                    'platform_shop_id', 'is_manual', 'is_active', 'use_count')
+    list_filter = ('alias_type', 'is_manual', 'is_active')
+    search_fields = ('alias_value', 'normalized_value', 'platform_shop_id')
+
+
+@admin.register(Owner)
+class OwnerAdmin(admin.ModelAdmin):
+    list_display = ('name', 'platform_owner_id', 'tax_no', 'is_active')
+    search_fields = ('name', 'platform_owner_id', 'tax_no')
+
+
+@admin.register(OwnerAccountMap)
+class OwnerAccountMapAdmin(admin.ModelAdmin):
+    list_display = ('owner', 'channel_type', 'pay_method', 'account', 'priority',
+                    'is_default', 'is_active')
+    list_filter = ('channel_type', 'pay_method', 'is_default', 'is_active')
+    search_fields = ('owner__name', 'account__account_name')
+
+
+@admin.register(PaymentReceipt)
+class PaymentReceiptAdmin(admin.ModelAdmin):
+    list_display = ('pay_date', 'payer_name', 'amount', 'channel_type', 'pay_method',
+                    'owner', 'entity', 'receiving_account', 'match_status')
+    list_filter = ('channel_type', 'pay_method', 'match_status')
+    search_fields = ('payer_name', 'payer_account', 'external_ref', 'receiving_account_name')
+    date_hierarchy = 'pay_date'
+    raw_id_fields = ('source_upload', 'raw_row', 'receiving_account', 'owner',
+                     'entity', 'order')
