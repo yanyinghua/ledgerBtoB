@@ -3614,3 +3614,72 @@ class B2bPayerAliasBuildTest(TestCase):
         self.assertEqual(a.entity, ent)
         self.assertTrue(a.is_manual)
         self.assertEqual(_PaymentReceipt.objects.filter(entity=ent).count(), 3)
+
+
+# ===========================================================================
+# 客户主体清单 / 付款人对照表批量导入测试
+# ===========================================================================
+class B2bCustomerMapImportTest(TestCase):
+    def _xlsx(self, headers, rows, sheet='Sheet1'):
+        wb = _openpyxl2.Workbook(); ws = wb.active; ws.title = sheet
+        ws.append(headers)
+        for r in rows: ws.append(r)
+        buf = _io.BytesIO(); wb.save(buf)
+        return buf.getvalue()
+
+    def test_import_entities_creates_and_updates(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        # 通过临时文件调用
+        import tempfile, os
+        data = self._xlsx(['主体名称', '税号', '平台客户ID'],
+                          [['甲公司', 'TAX1', 'PID1'], ['乙公司', 'TAX2', '']])
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+            f.write(data); path = f.name
+        try:
+            call_command('import_customer_map', '--entities', path, stdout=_io.StringIO())
+            self.assertEqual(_CustomerEntity.objects.count(), 2)
+            self.assertTrue(_CustomerEntity.objects.filter(name='甲公司', tax_no='TAX1').exists())
+            # 重跑幂等
+            call_command('import_customer_map', '--entities', path, stdout=_io.StringIO())
+            self.assertEqual(_CustomerEntity.objects.count(), 2)
+        finally:
+            os.remove(path)
+
+    def test_import_map_assigns_and_backfills(self):
+        from django.core.management import call_command
+        import tempfile, os
+        owner = _Owner.objects.create(name='货主', platform_owner_id='O1')
+        ent = _CustomerEntity.objects.create(name='目标主体', tax_no='TAXT')
+        a = _CustomerAlias.objects.create(alias_type='付款人名称', alias_value='付款公司A',
+                                          normalized_value='付款公司A')
+        for i in range(2):
+            _PaymentReceipt.objects.create(external_ref=f'M{i}', channel_type='线下',
+                pay_method='公对公', payer_name='付款公司A', amount=100, owner=owner)
+        data = self._xlsx(['付款人', '锚点类型', '目标主体'],
+                          [['付款公司A', '付款人名称', '目标主体']])
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+            f.write(data); path = f.name
+        try:
+            call_command('import_customer_map', '--map', path, stdout=_io.StringIO())
+            a.refresh_from_db()
+            self.assertEqual(a.entity, ent)
+            self.assertEqual(_PaymentReceipt.objects.filter(entity=ent).count(), 2)
+        finally:
+            os.remove(path)
+
+    def test_import_map_auto_creates_entity(self):
+        from django.core.management import call_command
+        import tempfile, os
+        a = _CustomerAlias.objects.create(alias_type='付款人名称', alias_value='新付款人',
+                                          normalized_value='新付款人')
+        data = self._xlsx(['付款人', '目标主体'], [['新付款人', '自动建的主体']])
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+            f.write(data); path = f.name
+        try:
+            call_command('import_customer_map', '--map', path, stdout=_io.StringIO())
+            a.refresh_from_db()
+            self.assertIsNotNone(a.entity)
+            self.assertEqual(a.entity.name, '自动建的主体')
+        finally:
+            os.remove(path)
