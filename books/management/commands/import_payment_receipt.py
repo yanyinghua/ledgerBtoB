@@ -21,6 +21,9 @@ class Command(BaseCommand):
         parser.add_argument('--src', default='', help='收款明细表所在目录')
         parser.add_argument('--file', default='', help='单个 xlsx 文件')
         parser.add_argument('--incremental', action='store_true', help='增量模式（按行哈希去重）')
+        parser.add_argument('--owner-id', type=int, default=None,
+                            help='默认货主ID（整份文件归属；行内有货主字段时以行内为准）')
+        parser.add_argument('--sheet', default='', help='优先使用的 sheet 名（如 0701-1109 / 07-10）')
         parser.add_argument('--dry-run', action='store_true', help='仅预览将导入的文件')
 
     def _user(self):
@@ -48,6 +51,8 @@ class Command(BaseCommand):
         for path in files:
             with open(path, 'rb') as f:
                 f.name = os.path.basename(path)
-                upload = run_import_payment_receipt(f, user, incremental=options['incremental'])
+                upload = run_import_payment_receipt(
+                    f, user, incremental=options['incremental'],
+                    default_owner=options['owner_id'], sheet_hint=options['sheet'])
             style = self.style.SUCCESS if upload.status in ('success', 'empty') else self.style.ERROR
             self.stdout.write(style(f'{os.path.basename(path)}: {upload.status} - {upload.note}'))

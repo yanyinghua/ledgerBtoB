@@ -3518,3 +3518,46 @@ class B2bRealCsvMappingTest(TestCase):
         self.assertEqual(o.platform_customer_id, 'CUST1')
         self.assertIn('商品A', o.goods_summary)
         self.assertIn('商品B', o.goods_summary)
+
+
+# ===========================================================================
+# 真实收款明细表头识别测试（招行/富掌柜）
+# ===========================================================================
+class B2bPaymentTemplateTest(TestCase):
+    def test_detect_cmb_header(self):
+        from books.imports.payment_receipt import detect_template
+        name, tmpl = detect_template(['账号', '交易日', '交易时间', '交易金额',
+                                       '借方金额', '贷方金额', '流水号', '收(付)方名称', '收(付)方账号'])
+        self.assertEqual(name, '招行交易查询')
+        self.assertIsNotNone(tmpl)
+
+    def test_detect_fzg_header(self):
+        from books.imports.payment_receipt import detect_template
+        name, tmpl = detect_template(['商户号', '商户名称', '交易时间', '交易金额',
+                                       '支付方式', '业务类型', '交易单号', '交易备注3(用户账号)'])
+        self.assertEqual(name, '富掌柜交易明细')
+        self.assertIsNotNone(tmpl)
+
+    def test_detect_unknown(self):
+        from books.imports.payment_receipt import detect_template
+        self.assertEqual(detect_template(['foo', 'bar'])[0], None)
+
+    def test_cmb_amount_signed_and_owner(self):
+        from books.imports.payment_receipt import run_import_payment_receipt as _run
+        import openpyxl
+        owner = _Owner.objects.create(name='测试货主', platform_owner_id='OWN_T')
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = '0701-1109'
+        ws.append(['交易日', '交易时间', '交易类型', '交易金额', '流水号', '收(付)方名称', '收(付)方账号', '账号名称'])
+        ws.append(['2026-07-01', '17:12:46', '提回对公户收款', '14000', 'FLOW1', '付款方A', '6222', '收款户'])
+        ws.append(['2026-07-02', '17:26:31', '对公转账正常提出', '-12450', 'FLOW2', '付款方B', '6223', '收款户'])
+        buf = _io.BytesIO(); wb.save(buf)
+        f = _NamedBytes2(buf.getvalue(), 'cmb.xlsx')
+        up = _run(f, User.objects.create_user('cmb_u', password='x'), default_owner=owner)
+        self.assertEqual(up.status, 'success')
+        rows = list(_PaymentReceipt.objects.order_by('external_ref'))
+        self.assertEqual(len(rows), 2)
+        by_ref = {r.external_ref: r for r in rows}
+        self.assertEqual(by_ref['cmb:FLOW1'].amount, _Decimal('14000'))
+        self.assertEqual(by_ref['cmb:FLOW2'].amount, _Decimal('-12450'))
+        for r in rows:
+            self.assertEqual(r.owner, owner)

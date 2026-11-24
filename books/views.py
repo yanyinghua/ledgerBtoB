@@ -3252,11 +3252,15 @@ def import_payment_page(request):
             messages.error(request, '请选择 Excel 文件。')
         else:
             incremental = request.POST.get('incremental') == '1'
-            upload = run_import_payment_receipt(f, request.user, incremental=incremental)
+            owner_id = request.POST.get('owner') or None
+            upload = run_import_payment_receipt(f, request.user, incremental=incremental,
+                                                default_owner=owner_id)
             if upload.status == 'failed':
                 messages.error(request, f'导入失败：{upload.note}')
             else:
                 messages.success(request, f'导入完成：{upload.note}')
             log_operation(request.user, '导入收款明细', target_type='SourceUpload',
                           target_id=str(upload.id), detail=upload.note, request=request)
-    return render(request, 'books/import_payment.html')
+    from books.models import Owner as _Owner
+    return render(request, 'books/import_payment.html',
+                  {'owners': _Owner.objects.filter(is_active=True)})
