@@ -48,6 +48,68 @@ def _iter_lakala_rows(xls, mappings):
             yield {str(k): _serialize(v) for k, v in row.items()}
 
 
+def _iter_csv_rows(file_obj, mappings):
+    """CSV（含 UTF-8 BOM）读取：逐行产出原始 dict，兼容 xlsx 的 sheet 抽象。"""
+    try:
+        file_obj.seek(0)
+    except Exception:
+        pass
+    try:
+        df = pd.read_csv(file_obj, dtype=str, keep_default_na=False)
+    except Exception:
+        try:
+            file_obj.seek(0)
+        except Exception:
+            pass
+        df = pd.read_csv(file_obj, dtype=str, keep_default_na=False, encoding='gbk')
+    if df.empty or not _sheet_usable_lakala(df, mappings):
+        return
+    for _, row in df.iterrows():
+        yield {str(k): _serialize(v) for k, v in row.items()}
+
+
+def iter_raw_rows(file_obj, mappings):
+    """按文件扩展名选择读取方式：.csv → CSV；其余 → Excel。"""
+    name = getattr(file_obj, 'name', '').lower()
+    if name.endswith('.csv'):
+        yield from _iter_csv_rows(file_obj, mappings)
+    else:
+        xls = pd.ExcelFile(file_obj, engine='openpyxl')
+        yield from _iter_lakala_rows(xls, mappings)
+
+
+def merge_detail_rows(raws, mappings):
+    """明细级 CSV：同一订单号的多行合并为一行（头信息取首行，商品名拼接）。
+
+    订单头字段（order_no/客户/金额/日期等）在明细行重复，取第一行；
+    goods_summary 收集所有行的商品名去重拼接。
+    """
+    # 找到映射到 order_no 的真实列名，作为分组键
+    order_cols = [m.source_column for m in mappings if m.target_field == 'order_no']
+    goods_cols = [m.source_column for m in mappings if m.target_field == 'goods_summary']
+    merged = {}
+    order_seq = []
+    for raw in raws:
+        key = ''
+        for c in order_cols:
+            if str(raw.get(c, '')).strip():
+                key = str(raw[c]).strip()
+                break
+        if not key:
+            key = _canon_hash(raw)  # 无订单号则各行独立
+        if key not in merged:
+            merged[key] = dict(raw)
+            order_seq.append(key)
+        else:
+            head = merged[key]
+            for gc in goods_cols:
+                g = str(raw.get(gc, '')).strip()
+                if g and g not in str(head.get(gc, '')):
+                    head[gc] = (str(head.get(gc, '')).strip() + '，' + g).strip('，')
+    for key in order_seq:
+        yield merged[key]
+
+
 def _infer_direction(fields, raw):
     d = str(fields.get('direction_raw', '')).strip()
     if '采购' in d or '进货' in d or ('付款' in d and '销售' not in d):
@@ -219,13 +281,6 @@ def run_import_lakala(source_type, file_obj, user, tag=''):
     upload = SourceUpload.objects.create(
         source_type=source_type, file_name=getattr(file_obj, 'name', 'lakala.xlsx'),
         uploaded_by=user, status='success')
-    try:
-        xls = pd.ExcelFile(file_obj, engine='openpyxl')
-    except Exception as exc:
-        upload.status = 'failed'
-        upload.note = f'无法解析文件（请用 .xlsx）：{exc}'
-        upload.save(update_fields=['status', 'note'])
-        return upload
 
     mappings = load_active_mappings(source_type)
     if not mappings:
@@ -234,8 +289,16 @@ def run_import_lakala(source_type, file_obj, user, tag=''):
         upload.save(update_fields=['status', 'note'])
         return upload
 
+    try:
+        raws = list(iter_raw_rows(file_obj, mappings))
+    except Exception as exc:
+        upload.status = 'failed'
+        upload.note = f'无法解析文件（请用 .xlsx/.csv）：{exc}'
+        upload.save(update_fields=['status', 'note'])
+        return upload
+
     orders = []
-    for raw in _iter_lakala_rows(xls, mappings):
+    for raw in merge_detail_rows(raws, mappings):
         row_obj = RawImportRow.objects.create(source_upload=upload, data=raw,
                                               row_hash=_canon_hash(raw))
         o = _build_order(source_type, raw, mappings, upload, stats)
@@ -261,14 +324,14 @@ def run_import_lakala(source_type, file_obj, user, tag=''):
 def run_import_lakala_incremental(source_type, file_obj, user, tag=''):
     """增量导入（按原始行哈希去重）。"""
     stats = {'skipped': 0, 'no_key': 0, 'no_amount': 0, 'created': 0}
+    mappings = load_active_mappings(source_type)
     try:
-        xls = pd.ExcelFile(file_obj, engine='openpyxl')
+        raws = list(iter_raw_rows(file_obj, mappings))
     except Exception as exc:
         return SourceUpload.objects.create(
             source_type=source_type, file_name=getattr(file_obj, 'name', 'lakala.xlsx'),
             uploaded_by=user, status='failed', note=f'无法解析文件：{exc}')
 
-    mappings = load_active_mappings(source_type)
     existing = set(RawImportRow.objects.filter(
         source_upload__source_type=source_type).exclude(row_hash='').values_list('row_hash', flat=True))
 
@@ -277,7 +340,7 @@ def run_import_lakala_incremental(source_type, file_obj, user, tag=''):
         uploaded_by=user, status='success', mode='incremental')
 
     orders = []
-    for raw in _iter_lakala_rows(xls, mappings):
+    for raw in merge_detail_rows(raws, mappings):
         rh = _canon_hash(raw)
         if rh in existing:
             stats['skipped'] += 1

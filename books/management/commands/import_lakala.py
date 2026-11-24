@@ -39,7 +39,8 @@ class Command(BaseCommand):
             files = [single]
         elif src:
             files = sorted(glob.glob(os.path.join(src, '*.xlsx')) +
-                           glob.glob(os.path.join(src, '*.xls')))
+                           glob.glob(os.path.join(src, '*.xls')) +
+                           glob.glob(os.path.join(src, '*.csv')))
         else:
             self.stderr.write('请提供 --src 或 --file')
             return

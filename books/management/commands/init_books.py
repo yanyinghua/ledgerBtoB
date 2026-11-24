@@ -64,97 +64,46 @@ def _ensure_operator(key):
 #     整单金额当成单笔收款、误判为已全额收付；payment_amount 只映射独立的收付款列。
 LAKALA_MAPPINGS = {
     'lakala_order': [
-        # —— 订单号 ——
-        ('订单号', 'order_no', [('none', {})], 0),
-        ('商户订单号', 'order_no', [('none', {})], 10),
-        ('交易订单号', 'order_no', [('none', {})], 20),
-        ('拉卡拉订单号', 'order_no', [('none', {})], 30),
-        ('订单编号', 'order_no', [('none', {})], 40),
-        # —— 子订单号 ——
-        ('子订单号', 'sub_order_no', [('none', {})], 0),
-        ('子单号', 'sub_order_no', [('none', {})], 10),
-        # —— 订单户名（原始，用于户名匹配）——
-        ('店铺名称', 'counterparty_raw_name', [('trim', {})], 0),
-        ('门店名称', 'counterparty_raw_name', [('trim', {})], 10),
-        ('店铺名', 'counterparty_raw_name', [('trim', {})], 20),
-        ('店名', 'counterparty_raw_name', [('trim', {})], 30),
-        ('门店', 'counterparty_raw_name', [('trim', {})], 40),
-        ('终端名称', 'counterparty_raw_name', [('trim', {})], 50),
-        ('交易对手名称', 'counterparty_raw_name', [('trim', {})], 60),
-        # —— 商户名 ——
-        ('商户名称', 'merchant_name', [('trim', {})], 0),
-        ('商户名', 'merchant_name', [('trim', {})], 10),
-        ('商户', 'merchant_name', [('trim', {})], 20),
-        # —— 订单金额 ——
-        ('订单金额', 'total_amount', [('to_decimal', {})], 0),
-        ('交易金额', 'total_amount', [('to_decimal', {})], 10),
-        ('金额', 'total_amount', [('to_decimal', {})], 20),
-        ('订单金额(元)', 'total_amount', [('to_decimal', {})], 30),
-        ('交易金额(元)', 'total_amount', [('to_decimal', {})], 40),
-        # —— 已收付金额 ——
-        ('已收金额', 'paid_amount', [('to_decimal', {})], 0),
-        ('已结算金额', 'paid_amount', [('to_decimal', {})], 10),
-        ('已付金额', 'paid_amount', [('to_decimal', {})], 20),
-        ('实收金额', 'paid_amount', [('to_decimal', {})], 30),
-        ('已收款金额', 'paid_amount', [('to_decimal', {})], 40),
-        # —— 单笔收付款金额（生成 OrderPayment 子行，勿与订单金额同源）——
-        ('收付款金额', 'payment_amount', [('to_decimal', {})], 0),
-        ('支付金额', 'payment_amount', [('to_decimal', {})], 10),
-        ('本次收付款金额', 'payment_amount', [('to_decimal', {})], 20),
-        ('本次支付金额', 'payment_amount', [('to_decimal', {})], 30),
-        # —— 订单日期 ——
-        ('交易时间', 'order_date', [('to_date', {})], 0),
-        ('订单日期', 'order_date', [('to_date', {})], 10),
-        ('下单时间', 'order_date', [('to_date', {})], 20),
-        ('交易日期', 'order_date', [('to_date', {})], 30),
-        ('订单时间', 'order_date', [('to_date', {})], 40),
-        # —— 业务员 ——
-        ('业务员', 'salesperson_name', [('trim', {})], 0),
-        ('业务人员', 'salesperson_name', [('trim', {})], 10),
-        ('销售员', 'salesperson_name', [('trim', {})], 20),
-        ('客户经理', 'salesperson_name', [('trim', {})], 30),
-        ('经手人', 'salesperson_name', [('trim', {})], 40),
-        # —— 收付款账户名 ——
-        ('收付款账户名', 'receiving_account_name', [('trim', {})], 0),
-        ('结算账户', 'receiving_account_name', [('trim', {})], 10),
-        ('收款账户', 'receiving_account_name', [('trim', {})], 20),
-        ('账户名称', 'receiving_account_name', [('trim', {})], 30),
-        ('开户名', 'receiving_account_name', [('trim', {})], 40),
-        ('银行账户', 'receiving_account_name', [('trim', {})], 50),
-        ('收款账户名', 'payment_account_name', [('trim', {})], 0),
-        ('付款账户名', 'payment_account_name', [('trim', {})], 10),
-        # —— 状态 ——
-        ('订单状态', 'order_status', [('none', {})], 0),
-        ('交易状态', 'order_status', [('none', {})], 10),
-        ('收付款状态', 'payment_status', [('none', {})], 0),
-        ('结算状态', 'payment_status', [('none', {})], 10),
-        ('支付状态', 'payment_status', [('none', {})], 20),
-        # —— 收付款日期 / 流水号 ——
-        ('收付款日期', 'payment_date', [('to_date', {})], 0),
-        ('结算日期', 'payment_date', [('to_date', {})], 10),
-        ('到账日期', 'payment_date', [('to_date', {})], 20),
-        ('收付款流水号', 'payment_ref', [('none', {})], 0),
-        ('交易流水号', 'payment_ref', [('none', {})], 10),
-        ('支付流水号', 'payment_ref', [('none', {})], 20),
-        ('流水号', 'payment_ref', [('none', {})], 30),
-        # —— 货物摘要 / 购销方向 ——
-        ('货物摘要', 'goods_summary', [('none', {})], 0),
-        ('商品名称', 'goods_summary', [('none', {})], 10),
-        ('商品', 'goods_summary', [('none', {})], 20),
-        ('摘要', 'goods_summary', [('none', {})], 30),
-        ('购销方向', 'direction_raw', [('none', {})], 0),
-        ('订单类型', 'direction_raw', [('none', {})], 10),
-        ('交易类型', 'direction_raw', [('none', {})], 20),
-        ('业务类型', 'direction_raw', [('none', {})], 30),
-        # —— 归一扩展（0028）：货主/平台店铺/客户ID ——
-        ('货主ID', 'platform_owner_id', [('none', {})], 0),
-        ('货主编号', 'platform_owner_id', [('none', {})], 10),
-        ('货主名称', 'owner_name', [('trim', {})], 0),
-        ('平台店铺ID', 'platform_shop_id', [('none', {})], 0),
-        ('店铺ID', 'platform_shop_id', [('none', {})], 10),
-        ('店铺编号', 'platform_shop_id', [('none', {})], 20),
-        ('平台客户ID', 'platform_customer_id', [('none', {})], 0),
-        ('客户ID', 'platform_customer_id', [('none', {})], 10),
+        # 依据真实导出 /home/yanyinghua/下载/订单_11-24_页1.csv（67列）校准。
+        # 该表为明细级（一商品一行、订单头重复），导入器按 order_no 合并为 1 单。
+        # —— 订单号 / 子单号 ——
+        ('订单Id', 'order_no', [('none', {})], 0),
+        ('运单ID', 'sub_order_no', [('none', {})], 0),
+        # —— 客户归一锚点 ——
+        ('客户名称', 'counterparty_raw_name', [('trim', {})], 0),
+        ('客户Id', 'platform_customer_id', [('none', {})], 0),
+        ('店铺Id', 'platform_shop_id', [('none', {})], 0),
+        ('收货人', 'counterparty_raw_name', [('trim', {})], 50),  # 兼容旧导出
+        # —— 金额 ——
+        ('订单总额', 'total_amount', [('to_decimal', {})], 0),
+        ('订单实收款', 'paid_amount', [('to_decimal', {})], 0),
+        ('商品总额', 'total_amount', [('to_decimal', {})], 20),
+        ('实付额', 'paid_amount', [('to_decimal', {})], 20),
+        # —— 日期 ——
+        ('下单时间', 'order_date', [('to_date', {})], 0),
+        ('支付时间', 'payment_date', [('to_date', {})], 0),
+        ('完成时间', 'order_status', [('to_date', {})], 30),
+        # —— 货主 ——
+        ('货主Id', 'platform_owner_id', [('none', {})], 0),
+        # —— 支付/状态 ——
+        ('支付通道', 'pay_method', [('none', {})], 0),
+        ('支付方式', 'payment_status', [('none', {})], 0),
+        ('状态', 'order_status', [('none', {})], 0),
+        ('支付Id', 'payment_ref', [('none', {})], 0),
+        # —— 商品 / 业务员 / 地址 ——
+        ('商品名', 'goods_summary', [('none', {})], 0),
+        ('销售标题', 'goods_summary', [('none', {})], 10),
+        ('片区', 'salesperson_name', [('none', {})], 0),
+        ('下单人', 'salesperson_name', [('none', {})], 10),
+        ('收货地址', 'remark', [('none', {})], 0),
+        # —— 兼容旧 xlsx 导出（订单中心）：复合列用正则提取 ——
+        ('id', 'order_no', [('none', {})], 50),
+        ('金额', 'paid_amount', [('regex_extract', {'pattern': '实收[￥¥]([\\d.]+)', 'group': 1}), ('to_decimal', {})], 50),
+        ('客户', 'counterparty_raw_name', [('regex_extract', {'pattern': '^([^\\s]+)', 'group': 1})], 60),
+        ('客户明细Id', 'platform_customer_id', [('none', {})], 50),
+        ('订单流水号', 'payment_ref', [('none', {})], 30),
+        ('订单日期', 'order_date', [('to_date', {})], 20),
+        ('客户经理', 'salesperson_name', [('none', {})], 20),
     ],
     # API（JSON）来源：常见 camelCase / snake_case 键名，显式列出以免与 Excel 映射互相污染。
     'lakala_order_api': [
@@ -215,14 +164,29 @@ PAYMENT_MAPPINGS = {
 }
 
 
-def seed_lakala_mappings(self):
+def seed_lakala_mappings(self, reset=False):
     """幂等播种：新增或更新列映射的 order 与算子步骤，并清理多余步骤。
 
     同时处理拉卡拉订单与收款明细映射；重跑本命令即可生效，无需手工删旧映射。
+    reset=True 时额外删除这些来源下「配置里已不再声明」的映射（用于从占位别名
+    切换到真实表头时清理旧别名，避免同 target 多条 order 相同导致取错列）。
     """
     created = updated = 0
     all_mappings = dict(LAKALA_MAPPINGS)
     all_mappings.update(PAYMENT_MAPPINGS)
+
+    if reset:
+        wanted = set()
+        for source_type, rows in all_mappings.items():
+            for source_column, target_field, steps, order in rows:
+                wanted.add((source_type, source_column, target_field))
+        removed = 0
+        for m in ColumnMappingConfig.objects.filter(source_type__in=all_mappings):
+            if (m.source_type, m.source_column, m.target_field) not in wanted:
+                m.delete()
+                removed += 1
+        self.stdout.write(self.style.WARNING(f'重置模式：删除旧映射 {removed} 条'))
+
     for source_type, rows in all_mappings.items():
         if not rows:
             continue
@@ -286,7 +250,9 @@ class Command(BaseCommand):
         parser.add_argument('--seed-winshare-mappings', action='store_true',
                             help='载入依据 /mnt/win_share 实表头准备的样例列映射（默认不执行）')
         parser.add_argument('--seed-lakala-mappings', action='store_true',
-                            help='载入 B2B 拉卡拉订单占位列映射（默认不执行）')
+                            help='载入 B2B 拉卡拉订单/收款明细列映射（默认不执行）')
+        parser.add_argument('--reset-lakala-mappings', action='store_true',
+                            help='重置模式：先删除这些来源下配置中已不再声明的旧映射，再播种（真实表头校准后用）')
 
     def handle(self, *args, **options):
         groups = ['管理员', '高层', '部门', '查询员', '业务员', '商户']
@@ -305,8 +271,9 @@ class Command(BaseCommand):
 
         if options.get('seed_winshare_mappings'):
             seed_winshare_mappings(self)
-        if options.get('seed_lakala_mappings'):
-            seed_lakala_mappings(self)
-        if not options.get('seed_winshare_mappings') and not options.get('seed_lakala_mappings'):
+        if options.get('seed_lakala_mappings') or options.get('reset_lakala_mappings'):
+            seed_lakala_mappings(self, reset=options.get('reset_lakala_mappings', False))
+        if not (options.get('seed_winshare_mappings') or options.get('seed_lakala_mappings')
+                or options.get('reset_lakala_mappings')):
             self.stdout.write('（跳过样例映射：列映射请在后台手工维护；'
                               '一键起步可加 --seed-winshare-mappings 或 --seed-lakala-mappings）')

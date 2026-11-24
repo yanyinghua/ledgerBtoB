@@ -3471,3 +3471,50 @@ class B2bNormalizationLogicTest(TestCase):
         up = _run_payment_import(self._xlsx(), user)
         self.assertEqual(up.status, 'empty')
         self.assertEqual(_PaymentReceipt.objects.count(), 1)
+
+
+# ===========================================================================
+# 真实拉卡拉 CSV 表头校准回归测试
+# ===========================================================================
+class B2bRealCsvMappingTest(TestCase):
+    """用真实导出表头（订单_11-24_页1.csv 的 67 列）验证合并与字段落地。"""
+
+    CSV_HEADER = ('订单Id,运单ID,店铺Id,客户Id,客户名称,支付Id,片区Id,状态,商品总额,总折扣,'
+                  '订单总额,订单成本,线上支付-退款额,到货付款-退货额,订单实收款,下单时间,'
+                  '编辑时间,支付时间,完成时间,支付方式,支付通道,收货人,商品名,货主Id')
+    CSV_ROW1 = ('ORD9001,WAY1,SHOP1,CUST1,测试店铺,PAY1,AREA1,5-已完成,327.40,16.40,'
+                '327.40,295.06,0,0,311.00,2026-11-19 23:17:49,,2026-11-19 23:18:02,,'
+                '先款后货,微信B2b支付,测试店铺,商品A,OWNER1')
+    CSV_ROW2 = ('ORD9001,WAY1,SHOP1,CUST1,测试店铺,PAY1,AREA1,5-已完成,327.40,16.40,'
+                '327.40,295.06,0,0,311.00,2026-11-19 23:17:49,,2026-11-19 23:18:02,,'
+                '先款后货,微信B2b支付,测试店铺,商品B,OWNER1')
+
+    def setUp(self):
+        from books.management.commands.init_books import LAKALA_MAPPINGS
+        from books.models import ColumnMappingConfig as _CMC, Operator as _Op, MappingStep as _MS
+        # 清理占位映射，避免同 target 多别名干扰（order 小的优先，真实列名应最小）
+        _CMC.objects.filter(source_type='lakala_order').delete()
+        for src, tgt, steps, order in LAKALA_MAPPINGS['lakala_order']:
+            m = _CMC.objects.create(source_type='lakala_order', source_column=src,
+                                    target_field=tgt, is_active=True, order=order)
+            for i, (op_key, params) in enumerate(steps):
+                op, _ = _Op.objects.get_or_create(key=op_key, defaults={'name': op_key, 'params_schema': []})
+                _MS.objects.create(mapping=m, op=op, order=i, params=params)
+
+    def test_real_csv_merge_and_fields(self):
+        from books.imports.lakala import run_import_lakala as _run
+        content = (self.CSV_HEADER + '\n' + self.CSV_ROW1 + '\n' + self.CSV_ROW2 + '\n').encode('utf-8-sig')
+        f = _NamedBytes2(content, 'orders.csv')
+        user = User.objects.create_user('csv_user', password='x')
+        up = _run('lakala_order', f, user)
+        self.assertEqual(up.status, 'success')
+        self.assertEqual(_Order.objects.count(), 1, '同订单号的多行应合并为 1 单')
+        o = _Order.objects.first()
+        self.assertEqual(o.external_order_no, 'ORD9001')
+        self.assertEqual(o.counterparty_raw_name, '测试店铺')
+        self.assertEqual(o.total_amount, _Decimal('327.40'))
+        self.assertEqual(o.paid_amount, _Decimal('311.00'))
+        self.assertEqual(o.platform_owner_id, 'OWNER1')
+        self.assertEqual(o.platform_customer_id, 'CUST1')
+        self.assertIn('商品A', o.goods_summary)
+        self.assertIn('商品B', o.goods_summary)
