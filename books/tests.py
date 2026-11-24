@@ -3372,3 +3372,102 @@ class B2bNormalizationModelTest(TestCase):
         with self.assertRaises(_IntegrityError), _transaction.atomic():
             _PaymentReceipt.objects.create(external_ref='PAY001', channel_type='线上',
                                            pay_method='微信', amount=1)
+
+
+# ===========================================================================
+# 归一引擎与收款明细导入测试（0028 逻辑）
+# ===========================================================================
+import io as _io
+import openpyxl as _openpyxl2
+from books.matching.normalization import (
+    resolve_customer as _resolve_customer, resolve_owner as _resolve_owner,
+    resolve_owner_account as _resolve_owner_account,
+    resolve_receiving_account as _resolve_receiving_account,
+)
+from books.imports.payment_receipt import run_import_payment_receipt as _run_payment_import
+
+
+class _NamedBytes2(_io.BytesIO):
+    def __init__(self, data, name):
+        super().__init__(data)
+        self.name = name
+
+
+class B2bNormalizationLogicTest(TestCase):
+    def setUp(self):
+        # 播种收款明细列映射（测试库全新，无 seed 命令的落库数据）
+        from books.management.commands.init_books import PAYMENT_MAPPINGS
+        from books.models import ColumnMappingConfig as _CMC, Operator as _Op, MappingStep as _MS
+        for src, tgt, steps, order in PAYMENT_MAPPINGS['payment_detail']:
+            m, _ = _CMC.objects.get_or_create(source_type='payment_detail',
+                source_column=src, target_field=tgt, defaults={'is_active': True, 'order': order})
+            for i, (op_key, params) in enumerate(steps):
+                op, _ = _Op.objects.get_or_create(key=op_key, defaults={'name': op_key, 'params_schema': []})
+                _MS.objects.get_or_create(mapping=m, op=op, order=i, defaults={'params': params})
+        self.entity = _CustomerEntity.objects.create(name='主体甲', tax_no='TAX001')
+        _CustomerAlias.objects.create(alias_type='店铺名', alias_value='甲店',
+                                      normalized_value='甲店', entity=self.entity)
+        _CustomerAlias.objects.create(alias_type='付款人名称', alias_value='张三',
+                                      normalized_value='张三', entity=self.entity)
+        self.owner = _Owner.objects.create(name='货主甲', platform_owner_id='OWNERX')
+
+    def test_resolve_customer_by_shop_and_payer(self):
+        self.assertEqual(_resolve_customer('甲店', '店铺名').obj, self.entity)
+        self.assertEqual(_resolve_customer('张三', '付款人名称').obj, self.entity)
+        self.assertIsNone(_resolve_customer('不存在', '店铺名').obj)
+
+    def test_manual_alias_wins(self):
+        # 唯一约束保证同 (type,value) 仅一条；验证人工锁定的映射被采用且不被覆盖
+        other = _CustomerEntity.objects.create(name='主体乙', tax_no='TAX002')
+        a = _CustomerAlias.objects.get(alias_type='店铺名', normalized_value='甲店')
+        a.entity = other
+        a.is_manual = True
+        a.save()
+        self.assertEqual(_resolve_customer('甲店', '店铺名').obj, other)
+
+    def test_resolve_owner_and_account(self):
+        self.assertEqual(_resolve_owner(platform_owner_id='OWNERX').obj, self.owner)
+        acc = _ReceivingAccount.objects.create(account_name='对公户', account_no='111',
+                                               channel_type='线下')
+        _OwnerAccountMap.objects.create(owner=self.owner, account=acc,
+                                        channel_type='线下', pay_method='公对公', is_default=True)
+        r = _resolve_owner_account(self.owner, '线下', '公对公')
+        self.assertEqual(r.obj, acc)
+        self.assertEqual(_resolve_receiving_account(account_name='对公户').obj, acc)
+
+    def _xlsx(self):
+        wb = _openpyxl2.Workbook()
+        ws = wb.active
+        ws.append(['收款流水号', '订单号', '收款方式', '线上/线下', '收款日期',
+                   '付款人名称', '付款人账号', '金额', '收款户名', '货主ID'])
+        ws.append(['PAY001', 'ORD001', '公对公', '线下', '2026-06-01',
+                   '张三', '6222', '888.00', '对公户', 'OWNERX'])
+        buf = _io.BytesIO()
+        wb.save(buf)
+        return _NamedBytes2(buf.getvalue(), 'detail.xlsx')
+
+    def test_payment_import_normalizes(self):
+        # 建订单 + 收款账户 + 货主账户字典
+        _ReceivingAccount.objects.create(account_name='对公户', account_no='111',
+                                         channel_type='线下')
+        _OwnerAccountMap.objects.create(owner=self.owner,
+            account=_ReceivingAccount.objects.get(account_name='对公户'),
+            channel_type='线下', pay_method='公对公', is_default=True)
+        _Order.objects.create(source_type='lakala_order', external_order_no='ORD001',
+                             direction='销售', counterparty_raw_name='甲店', total_amount=888)
+        user = User.objects.create_user('norm_user', password='x')
+        up = _run_payment_import(self._xlsx(), user)
+        self.assertEqual(up.status, 'success')
+        r = _PaymentReceipt.objects.get(external_ref='PAY001')
+        self.assertEqual(r.entity, self.entity)       # 付款人张三 → 主体甲
+        self.assertEqual(r.owner, self.owner)         # 货主ID → 货主甲
+        self.assertEqual(r.receiving_account.account_name, '对公户')
+        self.assertEqual(r.order.external_order_no, 'ORD001')
+        self.assertEqual(r.match_status, '自动已匹配')
+
+    def test_payment_import_idempotent(self):
+        user = User.objects.create_user('norm_user2', password='x')
+        _run_payment_import(self._xlsx(), user)
+        up = _run_payment_import(self._xlsx(), user)
+        self.assertEqual(up.status, 'empty')
+        self.assertEqual(_PaymentReceipt.objects.count(), 1)

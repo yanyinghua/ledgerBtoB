@@ -146,6 +146,15 @@ LAKALA_MAPPINGS = {
         ('订单类型', 'direction_raw', [('none', {})], 10),
         ('交易类型', 'direction_raw', [('none', {})], 20),
         ('业务类型', 'direction_raw', [('none', {})], 30),
+        # —— 归一扩展（0028）：货主/平台店铺/客户ID ——
+        ('货主ID', 'platform_owner_id', [('none', {})], 0),
+        ('货主编号', 'platform_owner_id', [('none', {})], 10),
+        ('货主名称', 'owner_name', [('trim', {})], 0),
+        ('平台店铺ID', 'platform_shop_id', [('none', {})], 0),
+        ('店铺ID', 'platform_shop_id', [('none', {})], 10),
+        ('店铺编号', 'platform_shop_id', [('none', {})], 20),
+        ('平台客户ID', 'platform_customer_id', [('none', {})], 0),
+        ('客户ID', 'platform_customer_id', [('none', {})], 10),
     ],
     # API（JSON）来源：常见 camelCase / snake_case 键名，显式列出以免与 Excel 映射互相污染。
     'lakala_order_api': [
@@ -175,13 +184,46 @@ LAKALA_MAPPINGS = {
 }
 
 
+# 收款明细占位列映射：真实表头到位后只需在此增删别名/调整 order。
+PAYMENT_MAPPINGS = {
+    'payment_detail': [
+        ('收款流水号', 'payment_ref', [('none', {})], 0),
+        ('流水号', 'payment_ref', [('none', {})], 10),
+        ('交易流水号', 'payment_ref', [('none', {})], 20),
+        ('订单号', 'order_no', [('none', {})], 0),
+        ('商户订单号', 'order_no', [('none', {})], 10),
+        ('收款方式', 'pay_method', [('none', {})], 0),
+        ('支付方式', 'pay_method', [('none', {})], 10),
+        ('线上/线下', 'channel_type', [('none', {})], 0),
+        ('渠道类型', 'channel_type', [('none', {})], 10),
+        ('收款日期', 'payment_date', [('to_date', {})], 0),
+        ('交易时间', 'payment_date', [('to_date', {})], 10),
+        ('付款人名称', 'payer_name', [('trim', {})], 0),
+        ('付款方名称', 'payer_name', [('trim', {})], 10),
+        ('付款人账号', 'payer_account', [('none', {})], 0),
+        ('付款账号', 'payer_account', [('none', {})], 10),
+        ('金额', 'payment_amount', [('to_decimal', {})], 0),
+        ('收款金额', 'payment_amount', [('to_decimal', {})], 10),
+        ('收款户名', 'receiving_account_name_raw', [('trim', {})], 0),
+        ('收款账户', 'receiving_account_name_raw', [('trim', {})], 10),
+        ('收款账户名', 'receiving_account_name', [('trim', {})], 0),
+        ('货主ID', 'platform_owner_id', [('none', {})], 0),
+        ('货主名称', 'owner_name', [('trim', {})], 0),
+        ('平台客户ID', 'platform_customer_id', [('none', {})], 0),
+        ('平台店铺ID', 'platform_shop_id', [('none', {})], 0),
+    ],
+}
+
+
 def seed_lakala_mappings(self):
     """幂等播种：新增或更新列映射的 order 与算子步骤，并清理多余步骤。
 
-    这样修改 LAKALA_MAPPINGS 后重跑本命令即可生效，无需手工删旧映射。
+    同时处理拉卡拉订单与收款明细映射；重跑本命令即可生效，无需手工删旧映射。
     """
     created = updated = 0
-    for source_type, rows in LAKALA_MAPPINGS.items():
+    all_mappings = dict(LAKALA_MAPPINGS)
+    all_mappings.update(PAYMENT_MAPPINGS)
+    for source_type, rows in all_mappings.items():
         if not rows:
             continue
         for source_column, target_field, steps, order in rows:

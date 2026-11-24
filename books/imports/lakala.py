@@ -93,6 +93,9 @@ def _build_order(source_type, raw, mappings, upload, stats=None):
         goods_summary=str(fields.get('goods_summary', '')).strip(),
         order_status=str(fields.get('order_status', '')).strip(),
         payment_status=str(fields.get('payment_status', '')).strip(),
+        # 归一扩展（0028）：平台原始 ID
+        platform_owner_id=str(fields.get('platform_owner_id', '')).strip(),
+        platform_customer_id=str(fields.get('platform_customer_id', '')).strip(),
         match_status='未匹配',
     )
     # 原始业务员名（供人工/后续匹配参考）
@@ -135,6 +138,24 @@ def _build_order(source_type, raw, mappings, upload, stats=None):
             order.receiving_account = result.receiving_account
         order.match_status = result.status
         order.match_confidence = result.confidence
+
+    # ---- 0028 归一：货主ID → Owner；店铺名/平台店铺ID → CustomerEntity ----
+    from books.matching.normalization import NormalizeResult, resolve_owner, resolve_customer
+    owner_res = resolve_owner(
+        platform_owner_id=order.platform_owner_id,
+        owner_name=str(fields.get('owner_name', '')).strip())
+    if owner_res:
+        order.owner = owner_res.obj
+
+    # 客户归一：优先平台店铺ID（可靠锚点），其次订单户名（店铺名）
+    cust_res = NormalizeResult()
+    platform_shop_id = str(fields.get('platform_shop_id', '')).strip()
+    if platform_shop_id:
+        cust_res = resolve_customer(platform_shop_id, alias_type='平台店铺ID')
+    if not cust_res and raw_name:
+        cust_res = resolve_customer(raw_name, alias_type='店铺名')
+    if cust_res:
+        order.customer_entity = cust_res.obj
 
     # 付款子行：订单内收款列
     pay_date = to_date(fields.get('payment_date')) or order.order_date
