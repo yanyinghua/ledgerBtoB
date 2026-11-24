@@ -10,6 +10,33 @@
 </h5>
 {% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
 
+<h6 class="mt-4">未指派付款人锚点（{{ unassigned_aliases|length }}）
+  <small class="text-muted">（由 build_payer_aliases 批量建档；指派后自动回填同归一值的收款明细）</small></h6>
+{% if unassigned_aliases %}
+<div class="table-responsive" style="max-height:420px;overflow:auto">
+  <table class="table table-sm table-striped">
+    <thead class="table-light"><tr><th>类型</th><th>付款人/账号</th><th>归一值</th><th>统计</th><th>指派客户主体</th></tr></thead>
+    <tbody>
+    {% for a in unassigned_aliases %}
+      <tr><td>{{ a.alias_type }}</td><td>{{ a.alias_value }}</td>
+      <td><small class="text-muted">{{ a.normalized_value }}</small></td>
+      <td><small>{{ a.note }}</small></td>
+      <td>
+        <form method="post" class="row g-1 align-items-center">
+          {% csrf_token %}<input type="hidden" name="kind" value="alias"><input type="hidden" name="pk" value="{{ a.pk }}">
+          <div class="col-auto"><select name="entity" class="form-select form-select-sm" required>
+            <option value="">--选择主体--</option>
+            {% for e in entities %}<option value="{{ e.pk }}">{{ e.name }}</option>{% endfor %}
+          </select></div>
+          <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">指派</button></div>
+        </form>
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}<div class="alert alert-info">暂无未指派锚点。可先运行 build_payer_aliases 建档。</div>{% endif %}
+
 <h6 class="mt-4">未匹配的收款明细（{{ receipts|length }}）</h6>
 {% for r in receipts %}
   <div class="card mb-2"><div class="card-body py-2">

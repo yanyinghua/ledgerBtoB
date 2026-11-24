@@ -3227,6 +3227,37 @@ def normalization_review(request):
                               target_type='Order', target_id=str(pk),
                               detail=f'货主 {owner_id}', request=request)
                 messages.success(request, f'订单 #{pk} 已指派货主。')
+        elif kind == 'alias' and pk:
+            # 给付款人锚点指派客户主体，并把同一归一值的收款明细批量回填
+            a = CustomerAlias.objects.filter(pk=pk).first()
+            if a and entity_id:
+                ent = CustomerEntity.objects.filter(pk=entity_id).first()
+                if ent:
+                    a.entity = ent
+                    a.is_manual = True
+                    a.save(update_fields=['entity', 'is_manual'])
+                    # 回填所有同归一值的收款明细
+                    from books.imports.utils import normalize_account_name
+                    norm = a.normalized_value
+                    matched = []
+                    if a.alias_type == '付款人名称':
+                        for r in PaymentReceipt.objects.filter(payer_name__isnull=False):
+                            if normalize_account_name(r.payer_name) == norm:
+                                matched.append(r)
+                    elif a.alias_type == '付款人账号':
+                        for r in PaymentReceipt.objects.filter(payer_account__isnull=False):
+                            if normalize_account_name(r.payer_account) == norm:
+                                matched.append(r)
+                    n = 0
+                    for r in matched:
+                        r.entity = ent
+                        r.match_status = '已人工确认'
+                        r.save(update_fields=['entity', 'match_status'])
+                        n += 1
+                    log_operation(request.user, '付款人别名指派', target_type='CustomerAlias',
+                                  target_id=str(pk), detail=f'指派 {ent.name}，回填 {n} 笔',
+                                  request=request)
+                    messages.success(request, f'{a.alias_value} → {ent.name}，已回填 {n} 笔收款明细。')
         return redirect('norm_review')
 
     receipts = PaymentReceipt.objects.filter(
@@ -3234,9 +3265,13 @@ def normalization_review(request):
         'owner', 'entity', 'receiving_account')[:100]
     orders = Order.objects.filter(match_status__in=['未匹配', '待复核']).exclude(
         platform_owner_id='').select_related('owner')[:100]
+    # 未指派的付款人锚点（批量建档生成），按 note 里的金额/笔数排序展示前 100
+    unassigned = list(CustomerAlias.objects.filter(
+        entity__isnull=True, is_active=True).order_by('alias_type', 'id')[:200])
     return render(request, 'books/norm_review.html', {
         'receipts': receipts,
         'orders': orders,
+        'unassigned_aliases': unassigned,
         'entities': CustomerEntity.objects.filter(is_active=True),
         'owners': Owner.objects.filter(is_active=True),
     })

@@ -3561,3 +3561,56 @@ class B2bPaymentTemplateTest(TestCase):
         self.assertEqual(by_ref['cmb:FLOW2'].amount, _Decimal('-12450'))
         for r in rows:
             self.assertEqual(r.owner, owner)
+
+
+# ===========================================================================
+# 付款人批量建档 + 别名指派回填测试
+# ===========================================================================
+class B2bPayerAliasBuildTest(TestCase):
+    def test_build_from_db_creates_unassigned_aliases(self):
+        from django.core.management import call_command
+        from io import StringIO
+        owner = _Owner.objects.create(name='货主', platform_owner_id='O1')
+        # 造两笔同付款人的收款明细
+        for i in range(2):
+            _PaymentReceipt.objects.create(external_ref=f'R{i}', channel_type='线上',
+                pay_method='微信', payer_name='测试付款公司', amount=100, owner=owner)
+        out = StringIO()
+        call_command('build_payer_aliases', '--from-db', stdout=out)
+        a = _CustomerAlias.objects.filter(alias_type='付款人名称',
+                                          alias_value='测试付款公司').first()
+        self.assertIsNotNone(a)
+        self.assertIsNone(a.entity, '批量建档的锚点应留空待指派')
+        self.assertIn('笔数=2', a.note)
+
+    def test_build_is_idempotent(self):
+        from django.core.management import call_command
+        from io import StringIO
+        owner = _Owner.objects.create(name='货主', platform_owner_id='O1')
+        _PaymentReceipt.objects.create(external_ref='R1', channel_type='线上',
+            pay_method='微信', payer_name='幂等测试公司', amount=100, owner=owner)
+        call_command('build_payer_aliases', '--from-db', stdout=StringIO())
+        n1 = _CustomerAlias.objects.count()
+        call_command('build_payer_aliases', '--from-db', stdout=StringIO())
+        self.assertEqual(_CustomerAlias.objects.count(), n1, '重复运行不应新增锚点')
+
+    def test_alias_assign_backfills_receipts(self):
+        from django.contrib.auth.models import User as _User
+        from django.test import Client as _Client
+        owner = _Owner.objects.create(name='货主', platform_owner_id='O1')
+        ent = _CustomerEntity.objects.create(name='主体', tax_no='T1')
+        a = _CustomerAlias.objects.create(alias_type='付款人名称', alias_value='张三公司',
+                                          normalized_value='张三公司')
+        for i in range(3):
+            _PaymentReceipt.objects.create(external_ref=f'B{i}', channel_type='线下',
+                pay_method='公对公', payer_name='张三公司', amount=100, owner=owner)
+        from django.contrib.auth.models import Group as _Group
+        u = _User.objects.create_superuser('assign_u', '', 'x')
+        u.groups.add(_Group.objects.get_or_create(name='管理员')[0])
+        c = _Client(); c.force_login(u)
+        r = c.post('/normalize/', {'kind': 'alias', 'pk': a.pk, 'entity': ent.pk})
+        self.assertEqual(r.status_code, 302)
+        a.refresh_from_db()
+        self.assertEqual(a.entity, ent)
+        self.assertTrue(a.is_manual)
+        self.assertEqual(_PaymentReceipt.objects.filter(entity=ent).count(), 3)
