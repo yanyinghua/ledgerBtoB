@@ -3683,3 +3683,48 @@ class B2bCustomerMapImportTest(TestCase):
             self.assertEqual(a.entity.name, '自动建的主体')
         finally:
             os.remove(path)
+
+
+# ===========================================================================
+# 店铺付款字典导入测试
+# ===========================================================================
+class B2bShopPaymentDictTest(TestCase):
+    def test_import_shop_dict_assigns_and_leaves_blank(self):
+        from django.core.management import call_command
+        import openpyxl, tempfile, os
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Sheet1'
+        ws.append(['店铺', '户名', '账号/用户号(微信/支付宝)'])
+        ws.append(['店铺甲', '武汉甲公司', 'oQhzTEST0000000000000001'])
+        ws.append(['', '', 'oQhzTEST0000000000000002'])  # 店铺空 → 留空待指派
+        buf = _io.BytesIO(); wb.save(buf)
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+            f.write(buf.getvalue()); path = f.name
+        try:
+            call_command('import_shop_payment_dict', '--file', path, stdout=_io.StringIO())
+            e = _CustomerEntity.objects.get(name='店铺甲')
+            a1 = _CustomerAlias.objects.get(normalized_value=_normalize_account_name('武汉甲公司'))
+            a2 = _CustomerAlias.objects.get(normalized_value=_normalize_account_name('oQhzTEST0000000000000002'))
+            self.assertEqual(a1.entity, e)
+            self.assertIsNone(a2.entity, '店铺为空的锚点应留空待指派')
+        finally:
+            os.remove(path)
+
+    def test_import_shop_dict_backfills_receipts(self):
+        from django.core.management import call_command
+        import openpyxl, tempfile, os
+        owner = _Owner.objects.create(name='货主', platform_owner_id='O1')
+        openid = 'oQhzTEST0000000000000003'
+        _PaymentReceipt.objects.create(external_ref='S1', channel_type='线上',
+            pay_method='微信', payer_account=openid, amount=100, owner=owner)
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Sheet1'
+        ws.append(['店铺', '户名', '账号/用户号(微信/支付宝)'])
+        ws.append(['店铺乙', '', openid])
+        buf = _io.BytesIO(); wb.save(buf)
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as f:
+            f.write(buf.getvalue()); path = f.name
+        try:
+            call_command('import_shop_payment_dict', '--file', path, stdout=_io.StringIO())
+            e = _CustomerEntity.objects.get(name='店铺乙')
+            self.assertEqual(_PaymentReceipt.objects.filter(entity=e).count(), 1)
+        finally:
+            os.remove(path)
