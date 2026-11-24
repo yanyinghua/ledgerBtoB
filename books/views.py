@@ -202,6 +202,11 @@ def import_upload(request):
                 # 资金明细业务员表走专用导入：复用「other」列映射，写入独立表
                 # FundReceiptHandler（避免成为主表重复交易），随后按表回填银行经手人。
                 upload = import_fund_handler(f, request.user)
+            elif st in ('lakala_order', 'lakala_order_api'):
+                # 拉卡拉订单走 B2B 订单导入器（Order + 归一），而不是旧 MasterRecord。
+                # 用户在「导入数据」页误选该来源时也能正确落库。
+                from books.imports.lakala import run_import_lakala
+                upload = run_import_lakala(st, f, request.user, tag=tag)
             else:
                 upload = run_import(st, f, request.user, tag=tag)
             if upload.status == 'failed':
@@ -221,6 +226,9 @@ def import_upload(request):
                             msg += ' ' + tail[-1]
                     except Exception as exc:  # 匹配失败不阻断导入结果
                         msg += f'（经手人匹配未执行：{exc}）'
+                elif st in ('lakala_order', 'lakala_order_api'):
+                    msg = f'拉卡拉订单导入完成，新增 {upload.row_count} 单。' + \
+                          (f' {upload.note}' if upload.note else '')
                 else:
                     msg = f'导入完成，新增 {upload.row_count} 条主表记录。'
                 if upload.note:

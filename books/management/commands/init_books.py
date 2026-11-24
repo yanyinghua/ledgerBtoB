@@ -107,30 +107,34 @@ LAKALA_MAPPINGS = {
     ],
     # API（JSON）来源：常见 camelCase / snake_case 键名，显式列出以免与 Excel 映射互相污染。
     'lakala_order_api': [
-        ('orderNo', 'order_no', [('none', {})], 0),
-        ('order_no', 'order_no', [('none', {})], 10),
-        ('merchantOrderNo', 'order_no', [('none', {})], 20),
-        ('subOrderNo', 'sub_order_no', [('none', {})], 0),
-        ('shopName', 'counterparty_raw_name', [('trim', {})], 0),
-        ('storeName', 'counterparty_raw_name', [('trim', {})], 10),
-        ('counterpartyRawName', 'counterparty_raw_name', [('trim', {})], 20),
-        ('merchantName', 'merchant_name', [('trim', {})], 0),
-        ('totalAmount', 'total_amount', [('to_decimal', {})], 0),
-        ('paidAmount', 'paid_amount', [('to_decimal', {})], 0),
-        ('paymentAmount', 'payment_amount', [('to_decimal', {})], 0),
-        ('orderDate', 'order_date', [('to_date', {})], 0),
-        ('transactionTime', 'order_date', [('to_date', {})], 10),
-        ('salespersonName', 'salesperson_name', [('trim', {})], 0),
-        ('receivingAccountName', 'receiving_account_name', [('trim', {})], 0),
-        ('paymentAccountName', 'payment_account_name', [('trim', {})], 0),
-        ('orderStatus', 'order_status', [('none', {})], 0),
-        ('paymentStatus', 'payment_status', [('none', {})], 0),
-        ('paymentDate', 'payment_date', [('to_date', {})], 0),
-        ('paymentRef', 'payment_ref', [('none', {})], 0),
-        ('goodsSummary', 'goods_summary', [('none', {})], 0),
-        ('directionRaw', 'direction_raw', [('none', {})], 0),
+        ('orderNo', 'order_no', [('none', {})], 100),
+        ('order_no', 'order_no', [('none', {})], 110),
+        ('merchantOrderNo', 'order_no', [('none', {})], 120),
+        ('subOrderNo', 'sub_order_no', [('none', {})], 100),
+        ('shopName', 'counterparty_raw_name', [('trim', {})], 100),
+        ('storeName', 'counterparty_raw_name', [('trim', {})], 110),
+        ('counterpartyRawName', 'counterparty_raw_name', [('trim', {})], 120),
+        ('merchantName', 'merchant_name', [('trim', {})], 100),
+        ('totalAmount', 'total_amount', [('to_decimal', {})], 100),
+        ('paidAmount', 'paid_amount', [('to_decimal', {})], 100),
+        ('paymentAmount', 'payment_amount', [('to_decimal', {})], 100),
+        ('orderDate', 'order_date', [('to_date', {})], 100),
+        ('transactionTime', 'order_date', [('to_date', {})], 110),
+        ('salespersonName', 'salesperson_name', [('trim', {})], 100),
+        ('receivingAccountName', 'receiving_account_name', [('trim', {})], 100),
+        ('paymentAccountName', 'payment_account_name', [('trim', {})], 100),
+        ('orderStatus', 'order_status', [('none', {})], 100),
+        ('paymentStatus', 'payment_status', [('none', {})], 100),
+        ('paymentDate', 'payment_date', [('to_date', {})], 100),
+        ('paymentRef', 'payment_ref', [('none', {})], 100),
+        ('goodsSummary', 'goods_summary', [('none', {})], 100),
+        ('directionRaw', 'direction_raw', [('none', {})], 100),
     ],
 }
+
+# API 来源也适用真实中文表头：把订单映射并入 API 映射（英文键 order=100 兜底）。
+LAKALA_MAPPINGS['lakala_order_api'] = (LAKALA_MAPPINGS['lakala_order'] +
+                                       LAKALA_MAPPINGS['lakala_order_api'])
 
 
 # 收款明细占位列映射：真实表头到位后只需在此增删别名/调整 order。
