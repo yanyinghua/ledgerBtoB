@@ -10,6 +10,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy, reverse
 from django.core.paginator import Paginator
+import pandas as pd
 from django.db.models import Q, Sum, Count, F, Window, Min, Max
 from django.db import transaction, IntegrityError
 from django.http import HttpResponse, JsonResponse
@@ -199,9 +200,34 @@ def import_upload(request):
             messages.error(request, '请选择来源类型并上传 Excel 文件。')
         else:
             if st == 'fund_handler':
-                # 资金明细业务员表走专用导入：复用「other」列映射，写入独立表
-                # FundReceiptHandler（避免成为主表重复交易），随后按表回填银行经手人。
-                upload = import_fund_handler(f, request.user)
+                # 容错：若上传的其实是「收款明细」（富掌柜/招行表头），自动走收款明细导入器，
+                # 避免用户选错来源导致「尚未配置 other 列映射」的困惑。
+                from books.imports.payment_receipt import detect_template
+                detected = None
+                try:
+                    xls_tmp = pd.ExcelFile(f, engine='openpyxl')
+                    for sn in xls_tmp.sheet_names:
+                        head = xls_tmp.parse(sn, header=None, nrows=6)
+                        cols = set()
+                        for _, r in head.iterrows():
+                            cols |= {str(c).strip() for c in r.tolist() if c is not None}
+                        detected, _ = detect_template(cols)
+                        if detected:
+                            break
+                    f.seek(0)
+                except Exception:
+                    detected = None
+                    try: f.seek(0)
+                    except Exception: pass
+                if detected:
+                    from books.imports.payment_receipt import run_import_payment_receipt
+                    upload = run_import_payment_receipt(f, request.user)
+                    if upload.status == 'success':
+                        messages.info(request, f'检测到该文件为「{detected}」收款明细，已按收款明细导入（而非资金明细业务员表）。')
+                else:
+                    # 资金明细业务员表走专用导入：复用「other」列映射，写入独立表
+                    # FundReceiptHandler（避免成为主表重复交易），随后按表回填银行经手人。
+                    upload = import_fund_handler(f, request.user)
             elif st in ('lakala_order', 'lakala_order_api'):
                 # 拉卡拉订单走 B2B 订单导入器（Order + 归一），而不是旧 MasterRecord。
                 # 用户在「导入数据」页误选该来源时也能正确落库。
