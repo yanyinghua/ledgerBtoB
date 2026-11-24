@@ -1,0 +1,24 @@
+{% extends 'books/base.html' %}
+{% block title %}货主收款账户字典 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">货主收款账户字典（货主 × 线上/线下 × 收款方式 → 收款账户）
+  {% if is_admin %}<a href="{% url 'norm_owneraccount_add' %}" class="btn btn-sm btn-primary">新增</a>{% endif %}
+</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="mb-3"><input name="q" class="form-control" style="max-width:320px" value="{{ request.GET.q }}" placeholder="搜索货主/账户"></form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead class="table-light"><tr><th>货主</th><th>线上/线下</th><th>收款方式</th><th>收款账户</th><th>优先级</th><th>默认</th><th>启用</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.owner.name }}</td><td>{{ r.channel_type }}</td><td>{{ r.pay_method }}</td>
+      <td>{{ r.account.account_name }}</td><td>{{ r.priority }}</td>
+      <td>{% if r.is_default %}是{% endif %}</td><td>{% if r.is_active %}是{% else %}否{% endif %}</td>
+      <td>{% if is_admin %}<a href="{% url 'norm_owneraccount_edit' r.pk %}" class="btn btn-sm btn-link">编辑</a>
+        <a href="{% url 'norm_owneraccount_delete' r.pk %}" class="btn btn-sm btn-link text-danger">删除</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="8" class="text-muted text-center py-4">暂无映射。</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs="" %}
+{% endblock %}

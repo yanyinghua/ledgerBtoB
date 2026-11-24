@@ -1,0 +1,34 @@
+{% extends 'books/base.html' %}
+{% block title %}客户归一字典 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">客户归一字典（店铺名/平台店铺ID/付款人名称/账号 → 客户主体）
+  {% if is_admin %}<a href="{% url 'norm_alias_add' %}" class="btn btn-sm btn-primary">新增</a>{% endif %}
+</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto"><input name="q" class="form-control" value="{{ request.GET.q }}" placeholder="搜索别名/主体"></div>
+  <div class="col-auto">
+    <select name="alias_type" class="form-select">
+      <option value="">全部类型</option>
+      {% for v,l in alias_types %}<option value="{{ v }}" {% if filter_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto"><button class="btn btn-primary">筛选</button></div>
+</form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead class="table-light"><tr><th>锚点类型</th><th>原始值</th><th>归一化值</th><th>客户主体</th><th>平台店铺ID</th><th>锁定</th><th>使用</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.alias_type }}</td><td>{{ r.alias_value }}</td><td><small class="text-muted">{{ r.normalized_value }}</small></td>
+      <td>{{ r.entity.name|default:'-' }}</td><td>{{ r.platform_shop_id|default:'-' }}</td>
+      <td>{% if r.is_manual %}<span class="badge bg-success">锁定</span>{% endif %}</td>
+      <td>{{ r.use_count }}</td>
+      <td>{% if is_admin %}<a href="{% url 'norm_alias_edit' r.pk %}" class="btn btn-sm btn-link">编辑</a>
+        <a href="{% url 'norm_alias_delete' r.pk %}" class="btn btn-sm btn-link text-danger">删除</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="8" class="text-muted text-center py-4">暂无别名，请新增或在待复核页指派。</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs="" %}
+{% endblock %}

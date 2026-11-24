@@ -70,8 +70,15 @@
              data-bs-toggle="dropdown" aria-expanded="false">基础数据</a>
           <ul class="dropdown-menu" aria-labelledby="dataMenu">
             {% if can_view %}
-            <li><a class="dropdown-item" href="{% url 'accountname_list' %}">户名匹配映射</a></li>
-            <li><a class="dropdown-item" href="{% url 'accountname_review' %}">待复核户名</a></li>
+            <li><a class="dropdown-item" href="{% url 'norm_review' %}">归一待复核</a></li>
+            <li><a class="dropdown-item" href="{% url 'norm_entity_list' %}">客户主体</a></li>
+            <li><a class="dropdown-item" href="{% url 'norm_alias_list' %}">客户归一字典</a></li>
+            <li><a class="dropdown-item" href="{% url 'norm_owner_list' %}">货主</a></li>
+            <li><a class="dropdown-item" href="{% url 'norm_owneraccount_list' %}">货主收款账户</a></li>
+            <li><a class="dropdown-item" href="{% url 'norm_receipt_list' %}">收款明细</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{% url 'accountname_list' %}">户名匹配映射（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'accountname_review' %}">待复核户名（旧）</a></li>
             {% endif %}
             {% if is_admin %}
             <li><a class="dropdown-item" href="{% url 'invited_list' %}">邀请白名单</a></li>

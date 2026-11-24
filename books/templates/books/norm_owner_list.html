@@ -1,0 +1,23 @@
+{% extends 'books/base.html' %}
+{% block title %}货主 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">货主（供货方/卖家，决定收款账户）
+  {% if is_admin %}<a href="{% url 'norm_owner_add' %}" class="btn btn-sm btn-primary">新增</a>{% endif %}
+</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="mb-3"><input name="q" class="form-control" style="max-width:320px" value="{{ request.GET.q }}" placeholder="搜索货主名/货主ID"></form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead class="table-light"><tr><th>货主名称</th><th>货主ID</th><th>税号</th><th>启用</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.name }}</td><td>{{ r.platform_owner_id }}</td><td>{{ r.tax_no|default:'-' }}</td>
+      <td>{% if r.is_active %}是{% else %}否{% endif %}</td>
+      <td>{% if is_admin %}<a href="{% url 'norm_owner_edit' r.pk %}" class="btn btn-sm btn-link">编辑</a>
+        <a href="{% url 'norm_owner_delete' r.pk %}" class="btn btn-sm btn-link text-danger">删除</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="5" class="text-muted text-center py-4">暂无货主。</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs="" %}
+{% endblock %}

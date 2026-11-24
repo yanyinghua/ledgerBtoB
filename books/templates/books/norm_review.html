@@ -1,0 +1,55 @@
+{% extends 'books/base.html' %}
+{% block title %}归一待复核 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">归一待复核
+  <a href="{% url 'norm_entity_list' %}" class="btn btn-sm btn-outline-secondary">客户主体</a>
+  <a href="{% url 'norm_alias_list' %}" class="btn btn-sm btn-outline-secondary">归一字典</a>
+  <a href="{% url 'norm_owner_list' %}" class="btn btn-sm btn-outline-secondary">货主</a>
+  <a href="{% url 'norm_owneraccount_list' %}" class="btn btn-sm btn-outline-secondary">货主账户</a>
+  <a href="{% url 'norm_receipt_list' %}" class="btn btn-sm btn-outline-secondary">收款明细</a>
+</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+
+<h6 class="mt-4">未匹配的收款明细（{{ receipts|length }}）</h6>
+{% for r in receipts %}
+  <div class="card mb-2"><div class="card-body py-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <strong>{{ r.pay_date|date:'Y-m-d'|default:'?' }}</strong> ｜ {{ r.payer_name|default:'-' }} ｜ {{ r.amount }}
+        ｜ {{ r.channel_type }} {{ r.pay_method }} ｜ 收款户名 {{ r.receiving_account_name|default:'-' }}
+        <span class="badge bg-secondary ms-1">{{ r.match_status }}</span>
+      </div>
+      <form method="post" class="row g-1 align-items-center">
+        {% csrf_token %}<input type="hidden" name="kind" value="receipt"><input type="hidden" name="pk" value="{{ r.pk }}">
+        <div class="col-auto"><select name="entity" class="form-select form-select-sm">
+          <option value="">--客户主体--</option>
+          {% for e in entities %}<option value="{{ e.pk }}" {% if r.entity_id == e.pk %}selected{% endif %}>{{ e.name }}</option>{% endfor %}
+        </select></div>
+        <div class="col-auto"><select name="owner" class="form-select form-select-sm">
+          <option value="">--货主--</option>
+          {% for o in owners %}<option value="{{ o.pk }}" {% if r.owner_id == o.pk %}selected{% endif %}>{{ o.name }}</option>{% endfor %}
+        </select></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">指派</button></div>
+      </form>
+    </div>
+  </div></div>
+{% empty %}<div class="alert alert-info">暂无待复核收款明细。</div>{% endfor %}
+
+<h6 class="mt-4">未匹配货主的订单（{{ orders|length }}）</h6>
+{% for o in orders %}
+  <div class="card mb-2"><div class="card-body py-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div><strong>{{ o.external_order_no }}</strong> ｜ {{ o.counterparty_raw_name }} ｜ {{ o.total_amount }}
+        ｜ 货主ID {{ o.platform_owner_id|default:'-' }}</div>
+      <form method="post" class="row g-1 align-items-center">
+        {% csrf_token %}<input type="hidden" name="kind" value="order"><input type="hidden" name="pk" value="{{ o.pk }}">
+        <div class="col-auto"><select name="owner" class="form-select form-select-sm" required>
+          <option value="">--指派货主--</option>
+          {% for w in owners %}<option value="{{ w.pk }}">{{ w.name }}</option>{% endfor %}
+        </select></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-success">指派</button></div>
+      </form>
+    </div>
+  </div></div>
+{% empty %}<div class="alert alert-info">暂无待复核订单。</div>{% endfor %}
+{% endblock %}

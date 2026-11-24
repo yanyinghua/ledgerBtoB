@@ -1,0 +1,25 @@
+{% extends 'books/base.html' %}
+{% block title %}客户主体 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">客户主体（多个店铺/付款人归一到同一税号主体）
+  {% if is_admin %}<a href="{% url 'norm_entity_add' %}" class="btn btn-sm btn-primary">新增</a>{% endif %}
+  <a href="{% url 'norm_review' %}" class="btn btn-sm btn-outline-warning">待复核</a>
+</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="mb-3"><input name="q" class="form-control" style="max-width:320px" value="{{ request.GET.q }}" placeholder="搜索主体名/税号/平台客户ID"></form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead class="table-light"><tr><th>主体名称</th><th>税号</th><th>平台客户ID</th><th>类型</th><th>别名数</th><th>启用</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.name }}</td><td>{{ r.tax_no|default:'-' }}</td><td>{{ r.platform_customer_id|default:'-' }}</td>
+      <td>{{ r.party_type }}</td><td>{{ r.aliases.count }}</td>
+      <td>{% if r.is_active %}是{% else %}否{% endif %}</td>
+      <td>{% if is_admin %}<a href="{% url 'norm_entity_edit' r.pk %}" class="btn btn-sm btn-link">编辑</a>
+        <a href="{% url 'norm_entity_delete' r.pk %}" class="btn btn-sm btn-link text-danger">删除</a>{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="7" class="text-muted text-center py-4">暂无客户主体。</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs="" %}
+{% endblock %}

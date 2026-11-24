@@ -27,6 +27,8 @@ from books.models import (
     Department, SalespersonProfile, Merchant, ReceivingAccount, Counterparty,
     Order, OrderPayment, AccountNameMapping, AccountNameAlias,
     InvitedPhone, SmsCode, MATCH_STATUS_CHOICES,
+    CustomerEntity, CustomerAlias, Owner, OwnerAccountMap, PaymentReceipt,
+    PAY_METHOD_CHOICES, CHANNEL_TYPE_CHOICES, CUSTOMER_ALIAS_TYPE_CHOICES,
 )
 from books.sms import send_sms
 from books.imports.utils import normalize_account_name
@@ -2969,3 +2971,292 @@ def import_lakala(request):
             log_operation(request.user, '导入拉卡拉订单', target_type='SourceUpload',
                           target_id=str(upload.id), detail=upload.note, request=request)
     return render(request, 'books/import_lakala.html')
+
+
+# ===========================================================================
+# 往来单位归一字典 Web 管理（0028）
+# ===========================================================================
+class CustomerEntityListView(LoginRequiredMixin, ListView):
+    model = CustomerEntity
+    template_name = 'books/norm_customerentity_list.html'
+    context_object_name = 'rows'
+    paginate_by = 50
+
+    def get_queryset(self):
+        qs = CustomerEntity.objects.all()
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(tax_no__icontains=q) |
+                           Q(platform_customer_id__icontains=q))
+        return qs
+
+
+class CustomerEntityCreateView(AdminRequiredMixin, CreateView):
+    model = CustomerEntity
+    fields = ['name', 'tax_no', 'platform_customer_id', 'party_type', 'is_active', 'remark']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_entity_list')
+    extra_context = {'title': '客户主体', 'back': 'norm_entity_list'}
+
+    def form_valid(self, form):
+        resp = super().form_valid(form)
+        log_operation(self.request.user, '新增客户主体', target_type='CustomerEntity',
+                      target_id=str(form.instance.pk), request=self.request)
+        return resp
+
+
+class CustomerEntityUpdateView(AdminRequiredMixin, UpdateView):
+    model = CustomerEntity
+    fields = ['name', 'tax_no', 'platform_customer_id', 'party_type', 'is_active', 'remark']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_entity_list')
+    extra_context = {'title': '客户主体', 'back': 'norm_entity_list'}
+
+    def form_valid(self, form):
+        resp = super().form_valid(form)
+        log_operation(self.request.user, '编辑客户主体', target_type='CustomerEntity',
+                      target_id=str(form.instance.pk), request=self.request)
+        return resp
+
+
+class CustomerEntityDeleteView(AdminRequiredMixin, DeleteView):
+    model = CustomerEntity
+    template_name = 'books/data_confirm_delete.html'
+    success_url = reverse_lazy('norm_entity_list')
+    extra_context = {'back': 'norm_entity_list'}
+
+
+class CustomerAliasListView(LoginRequiredMixin, ListView):
+    model = CustomerAlias
+    template_name = 'books/norm_customeralias_list.html'
+    context_object_name = 'rows'
+    paginate_by = 50
+
+    def get_queryset(self):
+        qs = CustomerAlias.objects.select_related('entity')
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(alias_value__icontains=q) | Q(normalized_value__icontains=q) |
+                           Q(entity__name__icontains=q))
+        t = self.request.GET.get('alias_type', '').strip()
+        if t:
+            qs = qs.filter(alias_type=t)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['alias_types'] = CUSTOMER_ALIAS_TYPE_CHOICES
+        ctx['filter_type'] = self.request.GET.get('alias_type', '')
+        return ctx
+
+
+class CustomerAliasCreateView(AdminRequiredMixin, CreateView):
+    model = CustomerAlias
+    fields = ['alias_type', 'alias_value', 'entity', 'platform_shop_id',
+              'is_manual', 'is_active', 'note']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_alias_list')
+    extra_context = {'title': '客户归一别名', 'back': 'norm_alias_list'}
+
+    def form_valid(self, form):
+        obj = form.save(commit=False)
+        obj.normalized_value = normalize_account_name(obj.alias_value)
+        obj.created_by = self.request.user
+        resp = super().form_valid(form)
+        log_operation(self.request.user, '新增客户归一别名', target_type='CustomerAlias',
+                      target_id=obj.alias_value, request=self.request)
+        return resp
+
+
+class CustomerAliasUpdateView(AdminRequiredMixin, UpdateView):
+    model = CustomerAlias
+    fields = ['alias_type', 'alias_value', 'entity', 'platform_shop_id',
+              'is_manual', 'is_active', 'note']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_alias_list')
+    extra_context = {'title': '客户归一别名', 'back': 'norm_alias_list'}
+
+    def form_valid(self, form):
+        obj = form.save(commit=False)
+        obj.normalized_value = normalize_account_name(obj.alias_value)
+        resp = super().form_valid(form)
+        log_operation(self.request.user, '编辑客户归一别名', target_type='CustomerAlias',
+                      target_id=obj.alias_value, request=self.request)
+        return resp
+
+
+class CustomerAliasDeleteView(AdminRequiredMixin, DeleteView):
+    model = CustomerAlias
+    template_name = 'books/data_confirm_delete.html'
+    success_url = reverse_lazy('norm_alias_list')
+    extra_context = {'back': 'norm_alias_list'}
+
+
+class OwnerListView(LoginRequiredMixin, ListView):
+    model = Owner
+    template_name = 'books/norm_owner_list.html'
+    context_object_name = 'rows'
+    paginate_by = 50
+
+    def get_queryset(self):
+        qs = Owner.objects.all()
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(platform_owner_id__icontains=q))
+        return qs
+
+
+class OwnerCreateView(AdminRequiredMixin, CreateView):
+    model = Owner
+    fields = ['platform_owner_id', 'name', 'tax_no', 'is_active', 'remark']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_owner_list')
+    extra_context = {'title': '货主', 'back': 'norm_owner_list'}
+
+
+class OwnerUpdateView(AdminRequiredMixin, UpdateView):
+    model = Owner
+    fields = ['platform_owner_id', 'name', 'tax_no', 'is_active', 'remark']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_owner_list')
+    extra_context = {'title': '货主', 'back': 'norm_owner_list'}
+
+
+class OwnerDeleteView(AdminRequiredMixin, DeleteView):
+    model = Owner
+    template_name = 'books/data_confirm_delete.html'
+    success_url = reverse_lazy('norm_owner_list')
+    extra_context = {'back': 'norm_owner_list'}
+
+
+class OwnerAccountMapListView(LoginRequiredMixin, ListView):
+    model = OwnerAccountMap
+    template_name = 'books/norm_owneraccount_list.html'
+    context_object_name = 'rows'
+    paginate_by = 50
+
+    def get_queryset(self):
+        qs = OwnerAccountMap.objects.select_related('owner', 'account')
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(owner__name__icontains=q) | Q(account__account_name__icontains=q))
+        return qs
+
+
+class OwnerAccountMapCreateView(AdminRequiredMixin, CreateView):
+    model = OwnerAccountMap
+    fields = ['owner', 'account', 'channel_type', 'pay_method',
+              'priority', 'is_default', 'is_active', 'note']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_owneraccount_list')
+    extra_context = {'title': '货主收款账户字典', 'back': 'norm_owneraccount_list'}
+
+
+class OwnerAccountMapUpdateView(AdminRequiredMixin, UpdateView):
+    model = OwnerAccountMap
+    fields = ['owner', 'account', 'channel_type', 'pay_method',
+              'priority', 'is_default', 'is_active', 'note']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('norm_owneraccount_list')
+    extra_context = {'title': '货主收款账户字典', 'back': 'norm_owneraccount_list'}
+
+
+class OwnerAccountMapDeleteView(AdminRequiredMixin, DeleteView):
+    model = OwnerAccountMap
+    template_name = 'books/data_confirm_delete.html'
+    success_url = reverse_lazy('norm_owneraccount_list')
+    extra_context = {'back': 'norm_owneraccount_list'}
+
+
+class PaymentReceiptListView(LoginRequiredMixin, ListView):
+    model = PaymentReceipt
+    template_name = 'books/norm_paymentreceipt_list.html'
+    context_object_name = 'rows'
+    paginate_by = 50
+
+    def get_queryset(self):
+        from django.db.models import Sum as _Sum
+        qs = PaymentReceipt.objects.select_related('owner', 'entity', 'receiving_account', 'order')
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(payer_name__icontains=q) | Q(external_ref__icontains=q) |
+                           Q(receiving_account_name__icontains=q))
+        st = self.request.GET.get('match_status', '').strip()
+        if st:
+            qs = qs.filter(match_status=st)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['match_statuses'] = [c[0] for c in MATCH_STATUS_CHOICES]
+        ctx['filter_status'] = self.request.GET.get('match_status', '')
+        return ctx
+
+
+@require_roles(ROLE_ADMIN, ROLE_EXECUTIVE)
+def normalization_review(request):
+    """待复核归一：为未匹配的收款明细/订单指派主体/货主并回填。"""
+    if request.method == 'POST':
+        kind = request.POST.get('kind', '')
+        pk = request.POST.get('pk', '')
+        entity_id = request.POST.get('entity') or None
+        owner_id = request.POST.get('owner') or None
+        if kind == 'receipt' and pk:
+            r = PaymentReceipt.objects.filter(pk=pk).first()
+            if r:
+                changed = []
+                if entity_id:
+                    r.entity_id = entity_id; changed.append('entity')
+                if owner_id:
+                    r.owner_id = owner_id; changed.append('owner')
+                if changed:
+                    r.match_status = '已人工确认'
+                    changed.append('match_status')
+                    r.save(update_fields=changed)
+                    log_operation(request.user, '复核收款明细归一',
+                                  target_type='PaymentReceipt', target_id=str(pk),
+                                  detail=f'归一 {changed}', request=request)
+                    messages.success(request, f'收款明细 #{pk} 已人工归一。')
+        elif kind == 'order' and pk:
+            o = Order.objects.filter(pk=pk).first()
+            if o and owner_id:
+                o.owner_id = owner_id
+                o.match_status = '已人工确认'
+                o.save(update_fields=['owner', 'match_status'])
+                log_operation(request.user, '复核订单货主归一',
+                              target_type='Order', target_id=str(pk),
+                              detail=f'货主 {owner_id}', request=request)
+                messages.success(request, f'订单 #{pk} 已指派货主。')
+        return redirect('norm_review')
+
+    receipts = PaymentReceipt.objects.filter(
+        match_status__in=['未匹配', '待复核']).select_related(
+        'owner', 'entity', 'receiving_account')[:100]
+    orders = Order.objects.filter(match_status__in=['未匹配', '待复核']).exclude(
+        platform_owner_id='').select_related('owner')[:100]
+    return render(request, 'books/norm_review.html', {
+        'receipts': receipts,
+        'orders': orders,
+        'entities': CustomerEntity.objects.filter(is_active=True),
+        'owners': Owner.objects.filter(is_active=True),
+    })
+
+
+@require_admin
+def import_payment_page(request):
+    """管理员：上传收款明细 Excel。"""
+    from books.imports.payment_receipt import run_import_payment_receipt
+    if request.method == 'POST':
+        f = request.FILES.get('file')
+        if not f:
+            messages.error(request, '请选择 Excel 文件。')
+        else:
+            incremental = request.POST.get('incremental') == '1'
+            upload = run_import_payment_receipt(f, request.user, incremental=incremental)
+            if upload.status == 'failed':
+                messages.error(request, f'导入失败：{upload.note}')
+            else:
+                messages.success(request, f'导入完成：{upload.note}')
+            log_operation(request.user, '导入收款明细', target_type='SourceUpload',
+                          target_id=str(upload.id), detail=upload.note, request=request)
+    return render(request, 'books/import_payment.html')

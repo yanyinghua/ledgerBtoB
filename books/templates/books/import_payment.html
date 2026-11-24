@@ -1,0 +1,22 @@
+{% extends 'books/base.html' %}
+{% block title %}导入收款明细 - B2B往来账系统{% endblock %}
+{% block content %}
+<h5 class="mb-3">导入收款明细（Excel .xlsx）</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<div class="card" style="max-width:540px"><div class="card-body">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label">收款明细表</label>
+      <input type="file" name="file" class="form-control" accept=".xlsx" required>
+      <div class="form-text">列名通过「列映射配置」的来源「收款明细」维护；占位映射已就绪。</div>
+    </div>
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="incremental" value="1" id="inc">
+      <label class="form-check-label" for="inc">增量模式（按行哈希去重，适合重复上传）</label>
+    </div>
+    <button type="submit" class="btn btn-primary">导入</button>
+    <a href="{% url 'norm_receipt_list' %}" class="btn btn-outline-secondary">查看收款明细</a>
+  </form>
+</div></div>
+{% endblock %}
