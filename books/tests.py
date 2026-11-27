@@ -1,3 +1,5 @@
+import csv
+import os
 import datetime
 from unittest import skipIf
 from django.test import TestCase, Client, RequestFactory
@@ -3816,6 +3818,35 @@ class B2bShopLedgerTest(TestCase):
         self.assertEqual(o.shop_name, '回填店铺')
         self.assertEqual(o.details.count(), 2)
         self.assertEqual(o.details.first().subtotal, 60)
+
+    def test_rebuild_details_from_source_csv(self):
+        import tempfile
+        up = SourceUpload.objects.create(source_type='lakala_order', file_name='rebuild-test')
+        raw = {'订单Id': 'REBUILD-TEST', '订单成本': '100', '商品名': '商品A，商品B'}
+        rr = RawImportRow.objects.create(source_upload=up, data=raw)
+        o = Order.objects.create(source_type='lakala_order',
+                                 external_order_no='REBUILD-TEST',
+                                 raw_row=rr, total_amount=200, paid_amount=200)
+        OrderDetail.objects.create(order=o, goods_name='商品A', qty=1, subtotal=1)
+        fd, path = tempfile.mkstemp(suffix='.csv')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8-sig', newline='') as fh:
+                w = csv.DictWriter(fh, fieldnames=['订单Id', '明细Id', '商品名', '数量',
+                                                   '单价', '小计', '折扣', '实付额'])
+                w.writeheader()
+                w.writerow({'订单Id': 'REBUILD-TEST', '明细Id': 'D1', '商品名': '商品A',
+                            '数量': '2', '单价': '50', '小计': '100', '折扣': '0', '实付额': '0'})
+                w.writerow({'订单Id': 'REBUILD-TEST', '明细Id': 'D2', '商品名': '商品B',
+                            '数量': '3', '单价': '33.33', '小计': '99.99', '折扣': '0', '实付额': '0'})
+            call_command('rebuild_order_details_from_csv', '--file', path, verbosity=0)
+        finally:
+            os.remove(path)
+        ds = list(o.details.order_by('row_index'))
+        self.assertEqual(len(ds), 2)
+        self.assertEqual(ds[0].detail_no, 'D1')
+        self.assertEqual(ds[1].qty, 3)
+        from decimal import Decimal
+        self.assertEqual(ds[1].subtotal, Decimal('99.99'))
 
     def test_zero_amount_with_cost_order_imported(self):
         """零单价赠品单有真实成本，应入库；金额成本均为 0 才跳过。"""
