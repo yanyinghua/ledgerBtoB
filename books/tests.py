@@ -3911,6 +3911,13 @@ class B2bShopLedgerTest(TestCase):
         self.assertIsNotNone(r.edited_at)
         self.assertTrue(OperationLog.objects.filter(action='编辑回款店铺名称').exists())
 
+    def test_import_list_empty_status_label(self):
+        SourceUpload.objects.create(source_type='lakala_order', file_name='dup.xlsx',
+                                    uploaded_by=self.admin, status='empty', row_count=0)
+        r = self.client.get('/import/list/')
+        self.assertContains(r, '无新增')
+        self.assertNotContains(r, 'bg-danger">失败')
+
     def test_registry_upsert_and_pages(self):
         reg = ShopBusinessRegistry.objects.create(shop_name='测试店铺', credit_code='91420100XX')
         reg2 = ShopBusinessRegistry.objects.filter(credit_code='91420100XX').first()

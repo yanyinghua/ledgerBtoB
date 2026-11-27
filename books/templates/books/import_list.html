@@ -52,6 +52,7 @@
         <td>
           {% if u.status == 'success' %}<span class="badge bg-success">成功</span>
           {% elif u.status == 'partial' %}<span class="badge bg-warning text-dark">部分</span>
+          {% elif u.status == 'empty' %}<span class="badge bg-secondary" title="订单均已存在">无新增</span>
           {% else %}<span class="badge bg-danger">失败</span>{% endif %}
         </td>
         <td>{{ u.row_count }}</td>

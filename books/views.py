@@ -254,8 +254,10 @@ def import_upload(request):
                     except Exception as exc:  # 匹配失败不阻断导入结果
                         msg += f'（经手人匹配未执行：{exc}）'
                 elif st in ('lakala_order', 'lakala_order_api'):
-                    msg = f'拉卡拉订单导入完成，新增 {upload.row_count} 单。' + \
-                          (f' {upload.note}' if upload.note else '')
+                    if upload.status == 'empty':
+                        msg = '拉卡拉订单导入完成：无新增（订单均已存在）。'
+                    else:
+                        msg = f'拉卡拉订单导入完成，新增 {upload.row_count} 单。'
                 else:
                     msg = f'导入完成，新增 {upload.row_count} 条主表记录。'
                 if upload.note:
