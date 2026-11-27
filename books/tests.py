@@ -12,7 +12,13 @@ from books.imports.engine import _build_record, run_import
 from books.imports.rules import rule_red_detect
 from books.imports.utils import upsert_customer_salesperson, to_date
 from books.models import CustomerSalesperson, SalespersonChangeReminder, NameMapping
+from books.models import (Order, OrderDetail, PaymentReceipt, ShopBusinessRegistry,
+                          CollectionReminder, ShopStatement, CustomerEntity,
+                          SalespersonProfile, Department)
 from books.views import _customer_aging, _perf_for_customer, sales_perf_export
+from books.imports.operators import op_sum_columns
+from books.imports.lakala import _build_order
+from books.imports.payment_receipt import SimpleMapping
 
 
 class ToDateCompactTest(TestCase):
@@ -3004,9 +3010,14 @@ class TableSortTest(TestCase):
         self.assertEqual([r['unit'] for r in desc.context['rows']], sorted(names, reverse=True))
 
     def test_export_ignores_sort(self):
+        # 比较单元格内容而非 xlsx 字节：openpyxl 写入的修改时间随秒变化，字节比较会偶发失败。
         a = self.client.get('/aging/export/?sort=balance&sort_dir=desc')
         b = self.client.get('/aging/export/')
-        self.assertEqual(a.content, b.content)
+        wa = _openpyxl.load_workbook(io.BytesIO(a.content))
+        wb = _openpyxl.load_workbook(io.BytesIO(b.content))
+        self.assertEqual(
+            [list(r) for r in wa.active.iter_rows(values_only=True)],
+            [list(r) for r in wb.active.iter_rows(values_only=True)])
 
 
 # ===========================================================================
@@ -3728,3 +3739,127 @@ class B2bShopPaymentDictTest(TestCase):
             self.assertEqual(_PaymentReceipt.objects.filter(entity=e).count(), 1)
         finally:
             os.remove(path)
+
+
+class B2bShopLedgerTest(TestCase):
+    """店铺往来账：字段口径、导入明细、穿透、抹零、编辑留痕、权限。"""
+
+    def setUp(self):
+        admin_grp, _ = Group.objects.get_or_create(name='管理员')
+        self.admin = User.objects.create_user('shop_admin', password='pw')
+        self.admin.groups.add(admin_grp)
+        self.admin.profile.account_status = '已授权'
+        self.admin.profile.save()
+        self.client = Client()
+        self.client.force_login(self.admin)
+
+    def _order(self, **kw):
+        defaults = dict(source_type='lakala_order', external_order_no='OD-1',
+                        shop_name='测试店铺', total_amount=1000, refund_amount=50,
+                        round_off=10, cost_amount=700, goods_amount=1080,
+                        discount_amount=30, order_status='已完成', region='测试片区')
+        defaults.update(kw)
+        return Order.objects.create(**defaults)
+
+    def test_order_shop_fields_and_margin(self):
+        o = self._order()
+        self.assertEqual(o.net_amount, 940)
+        self.assertEqual(o.gross_profit, 240)
+        self.assertAlmostEqual(o.gross_margin, 240 / 940, places=4)
+        self.assertEqual(o.gross_margin_pct, 25.53)
+        self.assertEqual(o.shop_name, '测试店铺')
+
+    def test_refund_sum_columns_operator(self):
+        raw = {'线上支付-退款额': '30', '到货付款-退货额': '20'}
+        total = op_sum_columns('30', {'columns': ['线上支付-退款额', '到货付款-退货额']},
+                               {'raw': raw})
+        self.assertEqual(total, 50)
+
+    def test_zero_amount_with_cost_order_imported(self):
+        """零单价赠品单有真实成本，应入库；金额成本均为 0 才跳过。"""
+        mappings = [
+            SimpleMapping('订单Id', 'order_no', [('none', {})]),
+            SimpleMapping('客户名称', 'counterparty_raw_name', [('trim', {})]),
+            SimpleMapping('订单成本', 'cost_amount', [('to_decimal', {})]),
+            SimpleMapping('下单时间', 'order_date', [('to_date', {})]),
+        ]
+        raw = {'订单Id': 'GIFT-1', '客户名称': '赠品店铺',
+               '订单成本': '6260', '下单时间': '2026-11-27 10:00:00'}
+        o = _build_order('lakala_order', raw, mappings, None, {})
+        self.assertIsNotNone(o)
+        self.assertEqual(o.total_amount, 0)
+        self.assertEqual(o.cost_amount, 6260)
+        self.assertEqual(o.gross_profit, -6260)
+        raw['订单成本'] = '0'
+        self.assertIsNone(_build_order('lakala_order', raw, mappings, None, {}))
+
+    def test_page_headers_and_export(self):
+        import openpyxl
+        from io import BytesIO
+        self._order()
+        r = self.client.get('/shop/ledger/')
+        self.assertEqual(r.status_code, 200)
+        for h in ['单据类型', '店铺名称', '订单id', '金额', '毛利', '毛利率', '业务主管', '区域']:
+            self.assertContains(r, h)
+        resp = self.client.get('/shop/ledger/export/')
+        self.assertEqual(resp.status_code, 200)
+        wb = openpyxl.load_workbook(BytesIO(resp.content))
+        headers = [c.value for c in wb.active[1]]
+        self.assertEqual(len(headers), 15)
+        self.assertEqual(headers[0], '单据类型')
+
+    def test_order_detail_penetration_and_roundoff(self):
+        o = self._order()
+        d = OrderDetail.objects.create(order=o, detail_no='D-1', goods_name='测试商品',
+                                       qty=2, unit_price=30, subtotal=60, row_index=0)
+        r = self.client.get('/shop/order/%s/' % o.pk)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, d.goods_name)
+        r = self.client.post('/shop/order/%s/roundoff/' % o.pk, {'round_off': '20'})
+        self.assertEqual(r.status_code, 302)
+        o.refresh_from_db()
+        self.assertEqual(o.round_off, 20)
+        self.assertEqual(o.net_amount, 930)
+        self.assertTrue(OperationLog.objects.filter(action='订单抹零').exists())
+        # 非法值不落库
+        self.client.post('/shop/order/%s/roundoff/' % o.pk, {'round_off': '-5'})
+        o.refresh_from_db()
+        self.assertEqual(o.round_off, 20)
+
+    def test_receipt_shop_name_edit_audit(self):
+        r = PaymentReceipt.objects.create(source_type='payment_detail', external_ref='R-1',
+                                          amount=100, payer_name='付款人')
+        resp = self.client.post('/shop/receipt/%s/edit/' % r.pk,
+                                {'shop_name': '归一店铺', 'next': '/shop/receipts/'})
+        self.assertEqual(resp.status_code, 302)
+        r.refresh_from_db()
+        self.assertEqual(r.shop_name, '归一店铺')
+        self.assertEqual(r.edited_by, self.admin)
+        self.assertIsNotNone(r.edited_at)
+        self.assertTrue(OperationLog.objects.filter(action='编辑回款店铺名称').exists())
+
+    def test_registry_upsert_and_pages(self):
+        reg = ShopBusinessRegistry.objects.create(shop_name='测试店铺', credit_code='91420100XX')
+        reg2 = ShopBusinessRegistry.objects.filter(credit_code='91420100XX').first()
+        self.assertEqual(reg, reg2)
+        for url in ['/shop/receipts/', '/shop/collection/', '/shop/aging/',
+                    '/shop/statements/', '/shop/registry/', '/shop/invoices/']:
+            self.assertEqual(self.client.get(url).status_code, 200, url)
+
+    def test_salesperson_row_permission(self):
+        sp = SalespersonProfile.objects.create(name='业务员甲')
+        u = User.objects.create_user('sp_user', password='pw')
+        sp_grp, _ = Group.objects.get_or_create(name='业务员')
+        u.groups.add(sp_grp)
+        u.profile.account_status = '已授权'
+        u.profile.salesperson = sp
+        u.profile.save()
+        sp.user = u
+        sp.save()
+        other = self._order(external_order_no='OD-OTHER', shop_name='他人店铺')
+        own = self._order(external_order_no='OD-OWN', shop_name='本人店铺')
+        own.salesperson = sp
+        own.save(update_fields=['salesperson'])
+        c = Client(); c.force_login(u)
+        self.assertEqual(c.get('/shop/order/%s/' % own.pk).status_code, 200)
+        self.assertEqual(c.get('/shop/order/%s/' % other.pk).status_code, 404)

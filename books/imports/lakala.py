@@ -11,7 +11,7 @@ import pandas as pd
 from django.db import transaction
 
 from books.models import (
-    SourceUpload, RawImportRow, Order, OrderPayment, Counterparty,
+    SourceUpload, RawImportRow, Order, OrderPayment, OrderDetail, Counterparty,
 )
 from books.imports.engine import (
     load_active_mappings, extract_fields, _read_sheet, _serialize, _canon_hash, BULK,
@@ -79,12 +79,12 @@ def iter_raw_rows(file_obj, mappings):
 
 
 def merge_detail_rows(raws, mappings):
-    """明细级 CSV：同一订单号的多行合并为一行（头信息取首行，商品名拼接）。
+    """明细级 CSV：按订单号分组，产出 (订单头, 明细行列表)。
 
     订单头字段（order_no/客户/金额/日期等）在明细行重复，取第一行；
-    goods_summary 收集所有行的商品名去重拼接。
+    goods_summary 仍收集所有行的商品名去重拼接（兼容旧导出/API）；
+    明细行完整保留，供 OrderDetail 落库与按订单id穿透。
     """
-    # 找到映射到 order_no 的真实列名，作为分组键
     order_cols = [m.source_column for m in mappings if m.target_field == 'order_no']
     goods_cols = [m.source_column for m in mappings if m.target_field == 'goods_summary']
     merged = {}
@@ -98,16 +98,18 @@ def merge_detail_rows(raws, mappings):
         if not key:
             key = _canon_hash(raw)  # 无订单号则各行独立
         if key not in merged:
-            merged[key] = dict(raw)
+            merged[key] = (dict(raw), [])
             order_seq.append(key)
         else:
-            head = merged[key]
+            head, details = merged[key]
             for gc in goods_cols:
                 g = str(raw.get(gc, '')).strip()
                 if g and g not in str(head.get(gc, '')):
                     head[gc] = (str(head.get(gc, '')).strip() + '，' + g).strip('，')
+        merged[key][1].append(dict(raw))
     for key in order_seq:
-        yield merged[key]
+        head, details = merged[key]
+        yield head, details
 
 
 def _infer_direction(fields, raw):
@@ -119,7 +121,7 @@ def _infer_direction(fields, raw):
     return '销售'
 
 
-def _build_order(source_type, raw, mappings, upload, stats=None):
+def _build_order(source_type, raw, mappings, upload, stats=None, details=None):
     fields = extract_fields(raw, mappings)
     raw_name = str(fields.get('counterparty_raw_name', '')).strip()
     order_no = str(fields.get('order_no', '')).strip()
@@ -131,7 +133,9 @@ def _build_order(source_type, raw, mappings, upload, stats=None):
     total = to_decimal(fields.get('total_amount'))
     paid = to_decimal(fields.get('paid_amount'))
     payment_amount = to_decimal(fields.get('payment_amount'))
-    if total == 0 and paid == 0 and payment_amount == 0:
+    cost = to_decimal(fields.get('cost_amount'))
+    # 零单价赠品/促销单：金额与实收均为 0，但有真实成本，应入库并在毛利中体现。
+    if total == 0 and paid == 0 and payment_amount == 0 and cost == 0:
         if stats is not None:
             stats['no_amount'] = stats.get('no_amount', 0) + 1
         return None
@@ -159,6 +163,13 @@ def _build_order(source_type, raw, mappings, upload, stats=None):
         platform_owner_id=str(fields.get('platform_owner_id', '')).strip(),
         platform_customer_id=str(fields.get('platform_customer_id', '')).strip(),
         match_status='未匹配',
+        # 店铺往来账：店铺与经营口径字段
+        shop_name=str(fields.get('shop_name', '')).strip() or raw_name,
+        goods_amount=to_decimal(fields.get('goods_amount')),
+        discount_amount=to_decimal(fields.get('discount_amount')),
+        refund_amount=to_decimal(fields.get('refund_amount')),
+        cost_amount=to_decimal(fields.get('cost_amount')),
+        region=str(fields.get('region', '')).strip(),
     )
     # 原始业务员名（供人工/后续匹配参考）
     sp_raw = str(fields.get('salesperson_name', '')).strip()
@@ -201,6 +212,11 @@ def _build_order(source_type, raw, mappings, upload, stats=None):
         order.match_status = result.status
         order.match_confidence = result.confidence
 
+    # 业务主管：按订单归属部门的负责人快照（导入后仍可在订单上手改）
+    if order.department_id and order.department.manager_id:
+        mgr = order.department.manager
+        order.supervisor = (mgr.get_full_name() or mgr.username).strip()
+
     # ---- 0028 归一：货主ID → Owner；店铺名/平台店铺ID → CustomerEntity ----
     from books.matching.normalization import NormalizeResult, resolve_owner, resolve_customer
     owner_res = resolve_owner(
@@ -234,6 +250,33 @@ def _build_order(source_type, raw, mappings, upload, stats=None):
         order._pending_payment = p
     else:
         order._pending_payment = None
+
+    # 明细行：逐行抽取 detail_* 字段，暂存待订单落库后回填 FK
+    pending_details = []
+    for idx, drow in enumerate(details or []):
+        df = extract_fields(drow, mappings)
+        pending_details.append(OrderDetail(
+            detail_no=str(df.get('detail_no', '')).strip(),
+            goods_id=str(df.get('detail_goods_id', '')).strip(),
+            sku_id=str(df.get('detail_sku_id', '')).strip(),
+            sku=str(df.get('detail_sku', '')).strip(),
+            barcode=str(df.get('detail_barcode', '')).strip(),
+            goods_name=str(df.get('detail_goods_name', '')).strip(),
+            spec=str(df.get('detail_spec', '')).strip(),
+            unit=str(df.get('detail_unit', '')).strip(),
+            qty=to_decimal(df.get('detail_qty')),
+            unit_price=to_decimal(df.get('detail_unit_price')),
+            subtotal=to_decimal(df.get('detail_subtotal')),
+            discount=to_decimal(df.get('detail_discount')),
+            discounted_subtotal=to_decimal(df.get('detail_discounted_subtotal')),
+            paid_amount=to_decimal(df.get('detail_paid')),
+            refund_amount=to_decimal(df.get('detail_refund')),
+            refund_qty=to_decimal(df.get('detail_refund_qty')),
+            owner_id=str(df.get('detail_owner_id', '')).strip(),
+            row_index=idx,
+            raw_data=drow,
+        ))
+    order._pending_details = pending_details
 
     return order
 
@@ -270,6 +313,23 @@ def _persist(orders, stats):
             payments.append(p)
     if payments:
         OrderPayment.objects.bulk_create(payments, batch_size=BULK)
+    details = []
+    for o in created:
+        for d in getattr(o, '_pending_details', []):
+            d.order = o
+            details.append(d)
+    if details:
+        # 同一订单内按 (明细Id 或行序) 去重，避免重复行落库
+        seen = set()
+        unique = []
+        for d in details:
+            key = (d.order_id, d.detail_no or f'row-{d.row_index}')
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(d)
+        OrderDetail.objects.bulk_create(unique, batch_size=BULK)
+        stats['details'] = stats.get('details', 0) + len(unique)
     stats['created'] = stats.get('created', 0) + len(created)
     return created
 
@@ -298,17 +358,18 @@ def run_import_lakala(source_type, file_obj, user, tag=''):
         return upload
 
     orders = []
-    for raw in merge_detail_rows(raws, mappings):
-        row_obj = RawImportRow.objects.create(source_upload=upload, data=raw,
-                                              row_hash=_canon_hash(raw))
-        o = _build_order(source_type, raw, mappings, upload, stats)
+    for head, details in merge_detail_rows(raws, mappings):
+        row_obj = RawImportRow.objects.create(source_upload=upload, data=head,
+                                              row_hash=_canon_hash(head))
+        o = _build_order(source_type, head, mappings, upload, stats, details=details)
         if o is not None:
             o.raw_row = row_obj
             orders.append(o)
 
     _persist(orders, stats)
     upload.row_count = stats['created']
-    note_parts = [f'新增 {stats["created"]} 单', f'跳过重复 {stats["skipped"]}']
+    note_parts = [f'新增 {stats["created"]} 单', f'明细 {stats.get("details", 0)} 行',
+                  f'跳过重复 {stats["skipped"]}']
     if stats['no_key']:
         note_parts.append(f'无户名/单号 {stats["no_key"]}')
     if stats['no_amount']:
@@ -340,21 +401,22 @@ def run_import_lakala_incremental(source_type, file_obj, user, tag=''):
         uploaded_by=user, status='success', mode='incremental')
 
     orders = []
-    for raw in merge_detail_rows(raws, mappings):
-        rh = _canon_hash(raw)
+    for head, details in merge_detail_rows(raws, mappings):
+        rh = _canon_hash(head)
         if rh in existing:
             stats['skipped'] += 1
             continue
         existing.add(rh)
-        row_obj = RawImportRow.objects.create(source_upload=upload, data=raw, row_hash=rh)
-        o = _build_order(source_type, raw, mappings, upload, stats)
+        row_obj = RawImportRow.objects.create(source_upload=upload, data=head, row_hash=rh)
+        o = _build_order(source_type, head, mappings, upload, stats, details=details)
         if o is not None:
             o.raw_row = row_obj
             orders.append(o)
 
     _persist(orders, stats)
     upload.row_count = stats['created']
-    upload.note = f'新增 {stats["created"]} 单；跳过重复行 {stats["skipped"]}'
+    upload.note = (f'新增 {stats["created"]} 单；明细 {stats.get("details", 0)} 行；'
+                   f'跳过重复行 {stats["skipped"]}')
     if stats['created'] == 0:
         upload.status = 'empty'
     upload.save(update_fields=['row_count', 'status', 'note'])
