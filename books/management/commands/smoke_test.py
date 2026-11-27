@@ -3,7 +3,7 @@
   python3 manage.py smoke_test
 
 覆盖：公开页 → 手机验证码注册 → 待授权零权限拦截 → 管理员授权 →
-      拉卡拉订单导入(别名列名) → 分层数据可见(商户/业务员/管理员) → 看板。
+      拉卡拉订单导入(真实CSV表头) → 分层数据可见(商户/业务员/管理员) → 看板。
 
 特点：
   - 全程在事务内运行，结束自动回滚，不污染本地数据库。
@@ -123,11 +123,13 @@ class Command(BaseCommand):
         # ---------- 授权后可访问 ----------
         self._check(c_user.get('/orders/').status_code == 200, '授权后用户可访问订单页')
 
-        # ---------- 导入订单（用别名列名）----------
+        # ---------- 导入订单（用真实拉卡拉 CSV 表头）----------
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.append(['商户订单号', '门店名称', '订单金额', '已收金额', '交易时间', '销售员'])
-        ws.append(['SMOKE001', '冒烟店铺', '500.00', '200.00', '2026-06-01', '冒烟业务员'])
+        ws.append(['订单Id', '客户名称', '订单总额', '订单实收款', '下单时间',
+                   '货主Id', '片区', '下单人', '商品名', '数量', '单价', '小计', '实付额'])
+        ws.append(['SMOKE001', '冒烟店铺', '500.00', '200.00', '2026-06-01',
+                   '', '冒烟片区', '冒烟业务员', '冒烟商品', '1', '500.00', '500.00', '200.00'])
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -139,6 +141,9 @@ class Command(BaseCommand):
                     '订单解析：金额/日期/方向')
         self._check(order.counterparty is not None, '户名匹配：精确命中已锁定的主体')
         self._check(order.payments.count() == 1, '收付款子行生成')
+        self._check(order.shop_name == '冒烟店铺' and order.region == '冒烟片区',
+                    '店铺名称/区域按真实表头落库')
+        self._check(order.details.count() == 1, '订单明细行落库（穿透数据）')
         # 挂到商户，供可见性验证
         order.merchant = merchant
         order.save()
