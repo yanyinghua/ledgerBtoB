@@ -1,0 +1,29 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}店铺开票记录 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">店铺开票记录</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto"><input name="shop" class="form-control" value="{{ filters.shop }}" placeholder="店铺名称"></div>
+  <div class="col-auto"><input name="q" class="form-control" value="{{ filters.q }}" placeholder="发票号"></div>
+  <div class="col-auto"><button class="btn btn-primary btn-sm">筛选</button></div>
+</form>
+<div class="alert alert-light py-2 mb-2">共 <strong>{{ summary.cnt }}</strong> 张发票 ｜ 金额 <strong>{{ summary.amount|cny }}</strong></div>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-bordered">
+    <thead class="table-light"><tr><th>店铺/单位</th><th>发票号码</th><th>日期</th><th>业务类型</th><th class="text-end">金额</th><th>类别</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.unit_name }}</td><td>{{ r.invoice_number|default:'-' }}</td>
+          <td>{{ r.occur_date|date:'Y-m-d'|default:'-' }}</td><td>{{ r.biz_type }}</td>
+          <td class="text-end">{{ r.debit|cny }}</td><td>{{ r.category|default:'-' }}</td>
+          <td><a href="{% url 'invoice_detail' r.pk %}" title="穿透查询发票明细">发票明细</a></td></tr>
+    {% empty %}
+      <tr><td colspan="7" class="text-muted text-center py-4">暂无开票记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

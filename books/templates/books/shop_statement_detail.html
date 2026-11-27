@@ -1,0 +1,39 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}对账单明细 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">对账单 {{ st.letter_no }}</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<div class="alert alert-light py-2">
+  店铺：<strong>{{ st.shop_name }}</strong> ｜ 期间：<strong>{{ st.period_from|date:'Y-m-d' }} ~ {{ st.period_to|date:'Y-m-d' }}</strong>
+  ｜ 对账金额：<strong>{{ st.amount|cny }}</strong> ｜ 状态：{{ st.status }}
+</div>
+<div class="d-flex gap-2 mb-3">
+  <a href="{% url 'shop_statement_export' st.pk %}" class="btn btn-outline-secondary btn-sm">导出 Excel</a>
+  {% if role == '管理员' or role == '高层' %}
+  {% if st.status != '已发放' %}
+  <form method="post" action="{% url 'shop_statement_issue' st.pk %}">
+    {% csrf_token %}<button class="btn btn-primary btn-sm">发放</button>
+  </form>
+  {% endif %}
+  {% endif %}
+  <a href="{% url 'shop_statements' %}" class="btn btn-outline-secondary btn-sm">返回</a>
+</div>
+<div class="table-responsive">
+  <table class="table table-sm table-bordered">
+    <thead class="table-light"><tr><th>日期</th><th>类型</th><th>单号</th><th class="text-end">应收金额</th><th class="text-end">已收金额</th><th>备注</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.date|date:'Y-m-d'|default:'-' }}</td><td>{{ r.type }}</td><td>{{ r.no|default:'-' }}</td>
+          <td class="text-end">{{ r.amount|cny }}</td><td class="text-end">{{ r.paid|cny }}</td>
+          <td>{{ r.remark|default:'-' }}</td></tr>
+    {% empty %}
+      <tr><td colspan="6" class="text-muted text-center py-4">该期间无明细。</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr class="table-info"><th colspan="3">合计</th>
+      <th class="text-end">{{ total_due|cny }}</th>
+      <th class="text-end">{{ total_paid|cny }}</th><th></th></tr></tfoot>
+  </table>
+</div>
+{% endblock %}

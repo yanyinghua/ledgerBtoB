@@ -1,0 +1,34 @@
+{% extends 'books/base.html' %}
+{% block title %}店铺工商字典 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">店铺名与工商登记名称/信用代码字典
+  {% if is_admin %}<a href="{% url 'shop_registry_add' %}" class="btn btn-sm btn-primary">新增</a>{% endif %}
+</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto"><input name="q" class="form-control" value="{{ request.GET.q }}" placeholder="店铺/工商名/信用代码"></div>
+  <div class="col-auto"><button class="btn btn-primary btn-sm">筛选</button></div>
+</form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-bordered">
+    <thead class="table-light"><tr><th>店铺名称</th><th>工商登记名称</th><th>统一社会信用代码</th><th>客户主体</th><th>来源</th><th>更新人</th><th>更新时间</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.shop_name }}</td><td>{{ r.registered_name|default:'-' }}</td>
+          <td>{{ r.credit_code|default:'-' }}</td><td>{{ r.entity.name|default:'-' }}</td>
+          <td>{{ r.source|default:'-' }}</td><td>{{ r.updated_by.username|default:'-' }}</td>
+          <td>{{ r.updated_at|date:'Y-m-d H:i' }}</td>
+          <td>
+            {% if is_admin %}
+            <a class="btn btn-sm btn-link" href="{% url 'shop_registry_edit' r.pk %}">编辑</a>
+            <a class="btn btn-sm btn-link text-danger" href="{% url 'shop_registry_delete' r.pk %}">删除</a>
+            {% endif %}
+          </td></tr>
+    {% empty %}
+      <tr><td colspan="8" class="text-muted text-center py-4">暂无字典记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs="" %}
+{% endblock %}

@@ -26,9 +26,10 @@ from books.models import (
     SalespersonChangeReminder,
     InvoiceLineItem, log_operation,
     Department, SalespersonProfile, Merchant, ReceivingAccount, Counterparty,
-    Order, OrderPayment, AccountNameMapping, AccountNameAlias,
+    Order, OrderPayment, OrderDetail, AccountNameMapping, AccountNameAlias,
     InvitedPhone, SmsCode, MATCH_STATUS_CHOICES,
     CustomerEntity, CustomerAlias, Owner, OwnerAccountMap, PaymentReceipt,
+    ShopBusinessRegistry, CollectionReminder, ShopStatement,
     PAY_METHOD_CHOICES, CHANNEL_TYPE_CHOICES, CUSTOMER_ALIAS_TYPE_CHOICES,
 )
 from books.sms import send_sms
@@ -3333,3 +3334,528 @@ def import_payment_page(request):
     from books.models import Owner as _Owner
     return render(request, 'books/import_payment.html',
                   {'owners': _Owner.objects.filter(is_active=True)})
+
+
+# ===========================================================================
+# 店铺往来账：往来明细 / 订单检索 / 穿透 / 抹零
+# ===========================================================================
+SHOP_LEDGER_SORT = {
+    'date': ('order_date', sorting.DESC),
+    'shop': ('shop_name', sorting.ASC),
+    'order_no': ('external_order_no', sorting.ASC),
+    'amount': ('total_amount', sorting.DESC),
+    'refund': ('refund_amount', sorting.DESC),
+    'cost': ('cost_amount', sorting.DESC),
+    'region': ('region', sorting.ASC),
+    'supervisor': ('supervisor', sorting.ASC),
+}
+
+
+def _shop_ledger_queryset(request):
+    """往来明细/检索的公共过滤：先过行级权限，再套筛选条件。"""
+    qs = visible_order_queryset(request.user, Order.objects.select_related(
+        'salesperson', 'department', 'merchant', 'counterparty', 'customer_entity'))
+    filters = {
+        'order_no': request.GET.get('order_no', '').strip(),
+        'shop_name': request.GET.get('shop_name', '').strip(),
+        'salesperson': request.GET.get('salesperson', '').strip(),
+        'region': request.GET.get('region', '').strip(),
+        'status': request.GET.get('status', '').strip(),
+        'date_from': request.GET.get('date_from', '').strip(),
+        'date_to': request.GET.get('date_to', '').strip(),
+        'q': request.GET.get('q', '').strip(),
+    }
+    if filters['order_no']:
+        qs = qs.filter(external_order_no__icontains=filters['order_no'])
+    if filters['shop_name']:
+        qs = qs.filter(shop_name__icontains=filters['shop_name'])
+    if filters['region']:
+        qs = qs.filter(region__icontains=filters['region'])
+    if filters['status']:
+        qs = qs.filter(order_status=filters['status'])
+    if filters['salesperson']:
+        sp = filters['salesperson']
+        if sp.isdigit():
+            qs = qs.filter(Q(salesperson_id=int(sp)) | Q(salesperson_raw__icontains=sp))
+        else:
+            qs = qs.filter(Q(salesperson__name__icontains=sp) | Q(salesperson_raw__icontains=sp))
+    if filters['date_from']:
+        qs = qs.filter(order_date__gte=filters['date_from'])
+    if filters['date_to']:
+        qs = qs.filter(order_date__lte=filters['date_to'])
+    if filters['q']:
+        qs = qs.filter(Q(external_order_no__icontains=filters['q']) |
+                       Q(shop_name__icontains=filters['q']) |
+                       Q(counterparty_raw_name__icontains=filters['q']) |
+                       Q(goods_summary__icontains=filters['q']) |
+                       Q(remark__icontains=filters['q']))
+    return qs, filters
+
+
+def _shop_ledger_summary(qs):
+    a = qs.aggregate(cnt=Count('id'), total=Sum('total_amount'), goods=Sum('goods_amount'),
+                     discount=Sum('discount_amount'), refund=Sum('refund_amount'),
+                     cost=Sum('cost_amount'), round_off=Sum('round_off'))
+    net = (a['total'] or 0) - (a['refund'] or 0) - (a['round_off'] or 0)
+    profit = net - (a['cost'] or 0)
+    a.update(net=net, profit=profit,
+             margin=float(profit / net) if net > 0 else 0)
+    return a
+
+
+@login_required
+def shop_ledger_list(request):
+    """往来明细 + 订单检索：15 列表头，按订单id可穿透。"""
+    qs, filters = _shop_ledger_queryset(request)
+    summary = _shop_ledger_summary(qs)
+    qs, sort = sorting.sort_queryset(qs, request.GET, fields=SHOP_LEDGER_SORT,
+                                     default=('order_date', 'id'),
+                                     default_key='date', default_dir=sorting.DESC)
+    per_page_choices = [20, 50, 100, 200]
+    try:
+        per_page = int(request.GET.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    if per_page not in per_page_choices:
+        per_page = 50
+    page_obj = Paginator(qs, per_page).get_page(request.GET.get('page'))
+    qd = request.GET.copy()
+    qd.pop('page', None)
+    base = visible_order_queryset(request.user, Order.objects.all())
+    ctx = {
+        'page_obj': page_obj, 'orders': page_obj, 'summary': summary, 'filters': filters,
+        'querystring': qd.urlencode(), 'per_page': per_page, 'per_page_choices': per_page_choices,
+        'sort': sort, 'role': get_user_role(request.user),
+        'regions': sorted({r for r in base.values_list('region', flat=True) if r}),
+        'statuses': sorted({s for s in base.values_list('order_status', flat=True) if s}),
+        'salespeople': SalespersonProfile.objects.filter(is_active=True),
+    }
+    return render(request, 'books/shop_ledger_list.html', ctx)
+
+
+@login_required
+def shop_ledger_export(request):
+    """与页面同口径的 Excel 导出（15 列）。"""
+    qs, _ = _shop_ledger_queryset(request)
+    import openpyxl
+    from io import BytesIO
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '店铺往来明细'
+    headers = ['单据类型', '店铺名称', '订单id', '日期', '金额', '商品金额', '折扣', '退款',
+               '成本金额', '毛利', '毛利率', '状态', '业务员', '业务主管', '区域']
+    ws.append(headers)
+    for o in qs.order_by('-order_date', '-id'):
+        ws.append([
+            '订单', o.shop_name, o.external_order_no, str(o.order_date or ''),
+            float(o.net_amount), float(o.goods_amount), float(o.discount_amount),
+            float(o.refund_amount), float(o.cost_amount), float(o.gross_profit),
+            o.gross_margin_pct, o.order_status,
+            o.salesperson.name if o.salesperson_id else o.salesperson_raw,
+            o.supervisor, o.region,
+        ])
+    out = BytesIO()
+    wb.save(out)
+    out.seek(0)
+    resp = HttpResponse(out.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = 'attachment; filename="shop_ledger.xlsx"'
+    return resp
+
+
+@login_required
+def shop_order_detail(request, pk):
+    """按订单id穿透：订单头 + 明细行（老数据回退原始行 JSON）+ 收付款。"""
+    o = get_object_or_404(visible_order_queryset(request.user, Order.objects.select_related(
+        'salesperson', 'department', 'merchant', 'counterparty', 'customer_entity')), pk=pk)
+    details = list(o.details.all())
+    raw_rows = []
+    if not details and o.raw_row and isinstance(o.raw_row.data, dict):
+        raw = o.raw_row.data
+        raw_rows = [{
+            'goods_name': raw.get('商品名') or raw.get('销售标题') or '',
+            'spec': raw.get('销售标题') or '', 'qty': raw.get('数量') or '',
+            'unit_price': raw.get('单价') or '', 'subtotal': raw.get('小计') or '',
+            'discount': raw.get('折扣') or '', 'paid_amount': raw.get('实付额') or '',
+            'refund_amount': raw.get('退款额') or '',
+        }]
+    role = get_user_role(request.user)
+    can_edit = role in (ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_DEPARTMENT)
+    return render(request, 'books/shop_order_detail.html', {
+        'order': o, 'details': details, 'raw_rows': raw_rows,
+        'payments': o.payments.all(), 'raw': o.raw_row.data if o.raw_row else {},
+        'can_edit': can_edit, 'role': role,
+        'next': request.get_full_path(),
+    })
+
+
+@require_POST
+@require_roles(ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_DEPARTMENT)
+def shop_roundoff(request, pk):
+    """订单抹零：只允许 0 ≤ round_off ≤ 当前净额+原抹零。"""
+    from decimal import Decimal, InvalidOperation
+    o = get_object_or_404(visible_order_queryset(request.user, Order.objects.all()), pk=pk)
+    try:
+        value = Decimal(request.POST.get('round_off', '0') or '0')
+    except (InvalidOperation, ValueError):
+        messages.error(request, '抹零金额格式不正确。')
+        return redirect('shop_order_detail', pk=pk)
+    if value < 0 or value > o.net_amount + o.round_off:
+        messages.error(request, '抹零金额需在 0 与可抹金额之间。')
+        return redirect('shop_order_detail', pk=pk)
+    old = o.round_off
+    o.round_off = value
+    o.save(update_fields=['round_off', 'updated_at'])
+    log_operation(request.user, '订单抹零', target_type='Order', target_id=str(pk),
+                  detail=f'{old} → {value}', request=request)
+    messages.success(request, '抹零已保存。')
+    return redirect(request.POST.get('next') or 'shop_order_detail', pk=pk)
+
+
+# ===========================================================================
+# 店铺往来账：回款管理 / 店铺工商字典 / 店铺开票记录
+# ===========================================================================
+@login_required
+def shop_receipt_list(request):
+    """回款表管理：显示账户类型/店铺名/编辑人，可编辑店铺名称。"""
+    qs = PaymentReceipt.objects.select_related('receiving_account', 'entity', 'edited_by', 'owner')
+    filters = {
+        'shop_name': request.GET.get('shop_name', '').strip(),
+        'payer': request.GET.get('payer', '').strip(),
+        'date_from': request.GET.get('date_from', '').strip(),
+        'date_to': request.GET.get('date_to', '').strip(),
+    }
+    if filters['shop_name']:
+        qs = qs.filter(shop_name__icontains=filters['shop_name'])
+    if filters['payer']:
+        qs = qs.filter(payer_name__icontains=filters['payer'])
+    if filters['date_from']:
+        qs = qs.filter(pay_date__gte=filters['date_from'])
+    if filters['date_to']:
+        qs = qs.filter(pay_date__lte=filters['date_to'])
+    summary = qs.aggregate(cnt=Count('id'), amount=Sum('amount'))
+    page_obj = Paginator(qs.order_by('-pay_date', '-id'), 50).get_page(request.GET.get('page'))
+    qd = request.GET.copy(); qd.pop('page', None)
+    role = get_user_role(request.user)
+    return render(request, 'books/shop_receipt_list.html', {
+        'page_obj': page_obj, 'rows': page_obj, 'filters': filters, 'summary': summary,
+        'querystring': qd.urlencode(), 'can_edit': role in (ROLE_ADMIN, ROLE_EXECUTIVE),
+        'shop_choices': ShopBusinessRegistry.objects.values_list('shop_name', flat=True),
+    })
+
+
+@require_POST
+@require_roles(ROLE_ADMIN, ROLE_EXECUTIVE)
+def shop_receipt_edit(request, pk):
+    """编辑回款店铺名称，保留编辑人与编辑时间。"""
+    r = get_object_or_404(PaymentReceipt, pk=pk)
+    old = r.shop_name
+    r.shop_name = request.POST.get('shop_name', '').strip()
+    r.edited_by = request.user
+    r.edited_at = timezone.now()
+    r.save(update_fields=['shop_name', 'edited_by', 'edited_at', 'updated_at'])
+    log_operation(request.user, '编辑回款店铺名称', target_type='PaymentReceipt',
+                  target_id=str(pk), detail=f'{old} → {r.shop_name}', request=request)
+    messages.success(request, '店铺名称已保存。')
+    return redirect(request.POST.get('next') or 'shop_receipt_list')
+
+
+class ShopRegistryListView(LoginRequiredMixin, ListView):
+    model = ShopBusinessRegistry
+    template_name = 'books/shop_registry_list.html'
+    context_object_name = 'rows'
+    paginate_by = 50
+
+    def get_queryset(self):
+        qs = ShopBusinessRegistry.objects.select_related('entity')
+        q = self.request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(shop_name__icontains=q) | Q(registered_name__icontains=q) |
+                           Q(credit_code__icontains=q))
+        return qs
+
+
+class ShopRegistryCreateView(AdminRequiredMixin, CreateView):
+    model = ShopBusinessRegistry
+    fields = ['shop_name', 'registered_name', 'credit_code', 'entity', 'source']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('shop_registry_list')
+    extra_context = {'title': '店铺工商字典', 'back': 'shop_registry_list'}
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        form.instance.updated_by = self.request.user
+        resp = super().form_valid(form)
+        log_operation(self.request.user, '新增店铺字典', target_type='ShopBusinessRegistry',
+                      target_id=str(form.instance.pk), request=self.request)
+        return resp
+
+
+class ShopRegistryUpdateView(AdminRequiredMixin, UpdateView):
+    model = ShopBusinessRegistry
+    fields = ['shop_name', 'registered_name', 'credit_code', 'entity', 'source']
+    template_name = 'books/data_form.html'
+    success_url = reverse_lazy('shop_registry_list')
+    extra_context = {'title': '店铺工商字典', 'back': 'shop_registry_list'}
+
+    def form_valid(self, form):
+        form.instance.updated_by = self.request.user
+        resp = super().form_valid(form)
+        log_operation(self.request.user, '编辑店铺字典', target_type='ShopBusinessRegistry',
+                      target_id=str(form.instance.pk), request=self.request)
+        return resp
+
+
+class ShopRegistryDeleteView(AdminRequiredMixin, DeleteView):
+    model = ShopBusinessRegistry
+    template_name = 'books/data_confirm_delete.html'
+    success_url = reverse_lazy('shop_registry_list')
+    extra_context = {'back': 'shop_registry_list'}
+
+
+@login_required
+def shop_invoice_list(request):
+    """店铺开票记录：按店铺筛选发票，发票号穿透到发票货物明细。"""
+    invoice_sources = ['sales_invoice', 'purchase_invoice']
+    qs = MasterRecord.objects.filter(source_type__in=invoice_sources).exclude(
+        tag__in=EXCLUDED_TAGS)
+    filters = {'shop': request.GET.get('shop', '').strip(),
+               'q': request.GET.get('q', '').strip()}
+    if filters['shop']:
+        qs = qs.filter(unit_name__icontains=filters['shop'])
+    if filters['q']:
+        qs = qs.filter(Q(unit_name__icontains=filters['q']) |
+                       Q(invoice_number__icontains=filters['q']))
+    summary = qs.aggregate(cnt=Count('id'), amount=Sum('debit'))
+    page_obj = Paginator(qs.order_by('-occur_date', '-id'), 50).get_page(request.GET.get('page'))
+    qd = request.GET.copy(); qd.pop('page', None)
+    return render(request, 'books/shop_invoice_list.html', {
+        'page_obj': page_obj, 'rows': page_obj, 'filters': filters, 'summary': summary,
+        'querystring': qd.urlencode(),
+    })
+
+
+# ===========================================================================
+# 店铺往来账：催款 / 账期 / 对账单
+# ===========================================================================
+def _shop_receivables(user, as_of=None):
+    """按店铺汇总未收应收与账龄桶；账期取店铺关联客户主体的 credit_term。"""
+    as_of = as_of or timezone.localdate()
+    qs = visible_order_queryset(user, Order.objects.select_related(
+        'salesperson', 'customer_entity').exclude(shop_name=''))
+    shops = {}
+    for o in qs:
+        shop = o.shop_name or '（未填店铺）'
+        ent = o.customer_entity
+        term = ent.credit_term if ent and ent.credit_term else 30
+        rec = shops.setdefault(shop, {
+            'shop_name': shop, 'entity': ent, 'credit_term': term,
+            'salesperson': o.salesperson.name if o.salesperson_id else o.salesperson_raw,
+            'items': [], 'total': 0,
+        })
+        remaining = float(o.net_amount) - float(o.paid_amount)
+        if remaining > 1e-9 and o.order_date:
+            rec['items'].append({'date': o.order_date, 'remaining': remaining})
+        # 同一店铺可能有多业务员：以最后一单为准并标注多个
+        if rec['salesperson'] and o.salesperson_id and rec['salesperson'] != o.salesperson.name:
+            rec['salesperson'] = rec['salesperson'] + ' 等'
+        rec['total'] += remaining
+        if ent and ent.credit_term:
+            rec['credit_term'] = ent.credit_term
+    rows = []
+    for shop, rec in shops.items():
+        b1, b2, b3, b4, overdue = _aging_buckets(rec['items'], as_of, rec['credit_term'])
+        rows.append({
+            'shop_name': shop, 'entity': rec['entity'], 'credit_term': rec['credit_term'],
+            'salesperson': rec['salesperson'] or '-', 'total': rec['total'],
+            'b1': b1, 'b2': b2, 'b3': b3, 'b4': b4, 'overdue': overdue,
+        })
+    rows.sort(key=lambda r: -r['overdue'])
+    return rows
+
+
+@login_required
+def shop_collection(request):
+    """业务员往来催款管理：按店铺/业务员汇总应收与逾期，支持登记催款记录。"""
+    as_of = to_date(request.GET.get('as_of', '')) or timezone.localdate()
+    salesperson = request.GET.get('salesperson', '').strip()
+    rows = _shop_receivables(request.user, as_of)
+    if salesperson:
+        rows = [r for r in rows if salesperson in (r['salesperson'] or '')]
+    reminders = CollectionReminder.objects.select_related('salesperson', 'operator')
+    if salesperson:
+        reminders = reminders.filter(salesperson__name__icontains=salesperson)
+    page_obj = Paginator(rows, 50).get_page(request.GET.get('page'))
+    qd = request.GET.copy(); qd.pop('page', None)
+    return render(request, 'books/shop_collection.html', {
+        'page_obj': page_obj, 'rows': page_obj, 'as_of': as_of,
+        'salesperson': salesperson, 'querystring': qd.urlencode(),
+        'reminders': reminders[:20], 'role': get_user_role(request.user),
+        'salespeople': SalespersonProfile.objects.filter(is_active=True),
+    })
+
+
+@require_POST
+@require_roles(ROLE_ADMIN, ROLE_EXECUTIVE, ROLE_SALESPERSON, ROLE_DEPARTMENT)
+def shop_reminder_add(request):
+    """登记催款记录。"""
+    shop_name = request.POST.get('shop_name', '').strip()
+    if not shop_name:
+        messages.error(request, '请选择店铺。')
+        return redirect('shop_collection')
+    from decimal import Decimal, InvalidOperation
+    try:
+        amount = Decimal(request.POST.get('amount', '0') or '0')
+    except (InvalidOperation, ValueError):
+        amount = 0
+    sp_id = request.POST.get('salesperson') or None
+    r = CollectionReminder.objects.create(
+        shop_name=shop_name, salesperson_id=sp_id, amount=amount,
+        due_date=to_date(request.POST.get('due_date', '')) or None,
+        remind_date=to_date(request.POST.get('remind_date', '')) or timezone.localdate(),
+        method=request.POST.get('method', '').strip(),
+        content=request.POST.get('content', '').strip(),
+        operator=request.user,
+    )
+    log_operation(request.user, '登记催款记录', target_type='CollectionReminder',
+                  target_id=str(r.pk), detail=shop_name, request=request)
+    messages.success(request, '催款记录已登记。')
+    return redirect(request.POST.get('next') or 'shop_collection')
+
+
+@login_required
+def shop_aging(request):
+    """账期管理：按店铺查看账期与账龄，管理员可修改账期天数。"""
+    as_of = to_date(request.GET.get('as_of', '')) or timezone.localdate()
+    rows = _shop_receivables(request.user, as_of)
+    page_obj = Paginator(rows, 50).get_page(request.GET.get('page'))
+    qd = request.GET.copy(); qd.pop('page', None)
+    return render(request, 'books/shop_aging.html', {
+        'page_obj': page_obj, 'rows': page_obj, 'as_of': as_of,
+        'querystring': qd.urlencode(), 'role': get_user_role(request.user),
+    })
+
+
+@require_POST
+@require_roles(ROLE_ADMIN, ROLE_EXECUTIVE)
+def shop_credit_term_update(request):
+    """修改店铺对应客户主体的账期天数。"""
+    entity_id = request.POST.get('entity')
+    try:
+        term = int(request.POST.get('credit_term', '30'))
+    except (TypeError, ValueError):
+        term = 30
+    ent = CustomerEntity.objects.filter(pk=entity_id).first()
+    if ent:
+        old = ent.credit_term
+        ent.credit_term = max(0, term)
+        ent.save(update_fields=['credit_term', 'updated_at'])
+        log_operation(request.user, '修改账期', target_type='CustomerEntity',
+                      target_id=str(ent.pk), detail=f'{old} → {ent.credit_term} 天', request=request)
+        messages.success(request, '账期已更新。')
+    else:
+        messages.error(request, '未找到对应客户主体，请先在客户主体中维护。')
+    return redirect(request.POST.get('next') or 'shop_aging')
+
+
+def _shop_statement_rows(shop_name, period_from, period_to, user=None):
+    """按店铺+期间生成对账明细（订单按净额，回款按金额）。"""
+    qs = Order.objects.filter(shop_name=shop_name, order_date__gte=period_from,
+                              order_date__lte=period_to)
+    if user is not None:
+        qs = visible_order_queryset(user, qs)
+    rows = []
+    for o in qs.order_by('order_date', 'id'):
+        rows.append({'date': o.order_date, 'type': '订单', 'no': o.external_order_no,
+                     'amount': float(o.net_amount), 'paid': float(o.paid_amount),
+                     'remark': o.goods_summary[:60]})
+    for r in PaymentReceipt.objects.filter(shop_name=shop_name, pay_date__gte=period_from,
+                                            pay_date__lte=period_to).order_by('pay_date', 'id'):
+        rows.append({'date': r.pay_date, 'type': '回款', 'no': r.external_ref,
+                     'amount': 0, 'paid': float(r.amount), 'remark': r.payer_name})
+    return rows
+
+
+@login_required
+def shop_statements(request):
+    """对账单管理：生成/查看对账单与发放编号。"""
+    if request.method == 'POST':
+        shop_name = request.POST.get('shop_name', '').strip()
+        period_from = to_date(request.POST.get('period_from', ''))
+        period_to = to_date(request.POST.get('period_to', ''))
+        if not (shop_name and period_from and period_to):
+            messages.error(request, '请填写店铺名称与起止日期。')
+            return redirect('shop_statements')
+        rows = _shop_statement_rows(shop_name, period_from, period_to, request.user)
+        amount = sum(r['amount'] - r['paid'] for r in rows)
+        prefix = 'ST-' + period_to.strftime('%Y%m') + '-'
+        seq = ShopStatement.objects.filter(letter_no__startswith=prefix).count() + 1
+        letter_no = prefix + f'{seq:04d}'
+        while ShopStatement.objects.filter(letter_no=letter_no).exists():
+            seq += 1
+            letter_no = prefix + f'{seq:04d}'
+        st = ShopStatement.objects.create(
+            letter_no=letter_no, shop_name=shop_name, period_from=period_from,
+            period_to=period_to, amount=amount, created_by=request.user,
+            remark=request.POST.get('remark', '').strip())
+        log_operation(request.user, '生成对账单', target_type='ShopStatement',
+                      target_id=str(st.pk), detail=letter_no, request=request)
+        messages.success(request, f'对账单 {letter_no} 已生成。')
+        return redirect('shop_statement_detail', pk=st.pk)
+    qs = ShopStatement.objects.all()
+    shop_name = request.GET.get('shop_name', '').strip()
+    if shop_name:
+        qs = qs.filter(shop_name__icontains=shop_name)
+    page_obj = Paginator(qs, 50).get_page(request.GET.get('page'))
+    return render(request, 'books/shop_statements.html', {
+        'page_obj': page_obj, 'rows': page_obj, 'shop_name': shop_name,
+        'role': get_user_role(request.user),
+        'shop_choices': ShopBusinessRegistry.objects.values_list('shop_name', flat=True),
+    })
+
+
+@login_required
+def shop_statement_detail(request, pk):
+    st = get_object_or_404(ShopStatement, pk=pk)
+    rows = _shop_statement_rows(st.shop_name, st.period_from, st.period_to, request.user)
+    return render(request, 'books/shop_statement_detail.html', {
+        'st': st, 'rows': rows,
+        'total_due': sum(r['amount'] for r in rows),
+        'total_paid': sum(r['paid'] for r in rows),
+        'role': get_user_role(request.user),
+    })
+
+
+@require_POST
+@require_roles(ROLE_ADMIN, ROLE_EXECUTIVE)
+def shop_statement_issue(request, pk):
+    st = get_object_or_404(ShopStatement, pk=pk)
+    st.status = '已发放'
+    st.issued_at = timezone.now()
+    st.save(update_fields=['status', 'issued_at'])
+    log_operation(request.user, '发放对账单', target_type='ShopStatement',
+                  target_id=str(pk), detail=st.letter_no, request=request)
+    messages.success(request, '对账单已发放。')
+    return redirect('shop_statement_detail', pk=pk)
+
+
+@login_required
+def shop_statement_export(request, pk):
+    st = get_object_or_404(ShopStatement, pk=pk)
+    rows = _shop_statement_rows(st.shop_name, st.period_from, st.period_to, request.user)
+    import openpyxl
+    from io import BytesIO
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '对账单'
+    ws.append([f'对账单号：{st.letter_no}', f'店铺：{st.shop_name}',
+               f'期间：{st.period_from} ~ {st.period_to}'])
+    ws.append(['日期', '类型', '单号', '应收金额', '已收金额', '备注'])
+    for r in rows:
+        ws.append([str(r['date'] or ''), r['type'], r['no'], r['amount'], r['paid'], r['remark']])
+    ws.append(['合计', '', '', sum(r['amount'] for r in rows), sum(r['paid'] for r in rows), ''])
+    out = BytesIO(); wb.save(out); out.seek(0)
+    resp = HttpResponse(out.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp['Content-Disposition'] = f'attachment; filename="{st.letter_no}.xlsx"'
+    return resp

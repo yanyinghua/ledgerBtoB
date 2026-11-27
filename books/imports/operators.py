@@ -71,6 +71,21 @@ def op_abs(value, params, context):
     return abs(to_decimal(value))
 
 
+def op_sum_columns(value, params, context):
+    """跨列求和：把 params.columns 列出的原始列全部 to_decimal 后相加。
+
+    用于「退款」这类由多列相加的字段（如线上支付-退款额 + 到货付款-退货额）。
+    """
+    total = 0
+    raw = context.get('raw') or {}
+    cols = params.get('columns') or []
+    if isinstance(cols, str):
+        cols = [c.strip() for c in cols.replace('，', ',').split(',') if c.strip()]
+    for col in cols:
+        total += to_decimal(raw.get(col))
+    return total
+
+
 def op_lookup_name(value, params, context):
     """按原始名查名称映射库；若 use_tax_no，则从同行原始税号列取税号。"""
     raw = context.get('raw', {}) or {}
@@ -160,6 +175,13 @@ OPERATORS = {
             {'name': 'val', 'label': '常量值', 'type': 'str', 'default': ''},
         ],
         'apply': op_constant,
+    },
+    'sum_columns': {
+        'name': '跨列求和', 'description': '把指定原始列的数值相加（用于退款等多列相加字段）。',
+        'params_schema': [
+            {'name': 'columns', 'label': '列名列表(逗号分隔)', 'type': 'str', 'default': ''},
+        ],
+        'apply': op_sum_columns,
     },
 }
 

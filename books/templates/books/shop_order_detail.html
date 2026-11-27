@@ -1,0 +1,96 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}订单明细穿透 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">订单明细穿透 <small class="text-muted">{{ order.external_order_no }}</small></h5>
+{% if messages %}
+  {% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-6 col-md-3"><div class="small text-muted">店铺名称</div><div>{{ order.shop_name|default:'-' }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">订单id</div><div>{{ order.external_order_no }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">日期</div><div>{{ order.order_date|date:'Y-m-d'|default:'-' }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">状态</div><div>{{ order.order_status|default:'-' }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">金额</div><div>{{ order.net_amount|cny }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">商品金额 / 折扣</div><div>{{ order.goods_amount|cny }} / {{ order.discount_amount|cny }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">退款 / 抹零</div><div>{{ order.refund_amount|cny }} / {{ order.round_off|cny }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">成本 / 毛利</div><div>{{ order.cost_amount|cny }} / {{ order.gross_profit|cny }}（{{ order.gross_margin_pct|floatformat:"2" }}%）</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">业务员</div><div>{{ order.salesperson.name|default:order.salesperson_raw|default:'-' }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">业务主管</div><div>{{ order.supervisor|default:'-' }}</div></div>
+      <div class="col-6 col-md-3"><div class="small text-muted">区域</div><div>{{ order.region|default:'-' }}</div></div>
+    </div>
+  </div>
+</div>
+
+{% if can_edit %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="post" action="{% url 'shop_roundoff' order.pk %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <div class="col-auto">
+        <label class="form-label">抹零金额</label>
+        <input type="number" step="0.01" min="0" name="round_off" class="form-control" value="{{ order.round_off }}">
+      </div>
+      <div class="col-auto"><button type="submit" class="btn btn-primary btn-sm">保存抹零</button></div>
+      <div class="col-auto small text-muted">保存后金额与毛利自动按新口径重算。</div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<h6 class="mb-2">订单明细行</h6>
+<div class="table-responsive mb-3">
+  <table class="table table-sm table-bordered align-middle">
+    <thead class="table-light">
+      <tr><th>明细Id</th><th>商品名</th><th>规格</th><th class="text-end">数量</th>
+          <th class="text-end">单价</th><th class="text-end">小计</th><th class="text-end">折扣</th>
+          <th class="text-end">扣后小计</th><th class="text-end">实付额</th><th class="text-end">退款额</th></tr>
+    </thead>
+    <tbody>
+    {% for d in details %}
+      <tr><td>{{ d.detail_no|default:'-' }}</td><td>{{ d.goods_name|default:'-' }}</td>
+          <td>{{ d.spec|default:'-' }}</td><td class="text-end">{{ d.qty }}</td>
+          <td class="text-end">{{ d.unit_price }}</td><td class="text-end">{{ d.subtotal }}</td>
+          <td class="text-end">{{ d.discount }}</td><td class="text-end">{{ d.discounted_subtotal }}</td>
+          <td class="text-end">{{ d.paid_amount }}</td><td class="text-end">{{ d.refund_amount }}</td></tr>
+    {% empty %}
+      {% for d in raw_rows %}
+      <tr><td>-</td><td>{{ d.goods_name|default:'-' }}</td><td>{{ d.spec|default:'-' }}</td>
+          <td class="text-end">{{ d.qty }}</td><td class="text-end">{{ d.unit_price }}</td>
+          <td class="text-end">{{ d.subtotal }}</td><td class="text-end">{{ d.discount }}</td>
+          <td class="text-end">-</td><td class="text-end">{{ d.paid_amount }}</td>
+          <td class="text-end">{{ d.refund_amount }}</td></tr>
+      {% empty %}
+      <tr><td colspan="10" class="text-center text-muted">暂无明细行（历史订单可展开下方原始行）。</td></tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h6 class="mb-2">收付款记录</h6>
+<div class="table-responsive mb-3">
+  <table class="table table-sm table-bordered">
+    <thead class="table-light"><tr><th>日期</th><th>金额</th><th>方向</th><th>流水号</th></tr></thead>
+    <tbody>
+    {% for p in payments %}
+      <tr><td>{{ p.pay_date|date:'Y-m-d'|default:'-' }}</td><td>{{ p.amount|cny }}</td>
+          <td>{{ p.direction|default:'-' }}</td><td>{{ p.external_ref|default:'-' }}</td></tr>
+    {% empty %}
+      <tr><td colspan="4" class="text-center text-muted">暂无收付款记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<details class="mb-3">
+  <summary class="small text-muted">原始导入行（穿透核对）</summary>
+  <pre class="bg-light p-2 small">{{ raw }}</pre>
+</details>
+
+<a href="{% url 'shop_ledger_list' %}" class="btn btn-outline-secondary btn-sm">返回往来明细</a>
+{% endblock %}

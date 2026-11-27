@@ -1,0 +1,41 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}账期管理 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">账期管理</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto"><input type="date" name="as_of" class="form-control" value="{{ as_of|date:'Y-m-d' }}"></div>
+  <div class="col-auto"><button class="btn btn-primary btn-sm">筛选</button></div>
+</form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-bordered">
+    <thead class="table-light"><tr><th>店铺名称</th><th>账期(天)</th><th class="text-end">未收金额</th>
+      <th class="text-end">1-30天</th><th class="text-end">31-60天</th><th class="text-end">61-90天</th>
+      <th class="text-end">90天以上</th><th class="text-end">逾期</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.shop_name }}</td><td>{{ r.credit_term }}</td>
+        <td class="text-end">{{ r.total|cny }}</td><td class="text-end">{{ r.b1|cny }}</td>
+        <td class="text-end">{{ r.b2|cny }}</td><td class="text-end">{{ r.b3|cny }}</td>
+        <td class="text-end">{{ r.b4|cny }}</td><td class="text-end">{{ r.overdue|cny }}</td>
+        <td>
+          {% if role == '管理员' or role == '高层' %}
+          {% if r.entity %}
+          <form method="post" action="{% url 'shop_credit_term_update' %}" class="d-flex gap-1">
+            {% csrf_token %}<input type="hidden" name="entity" value="{{ r.entity.pk }}">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="number" name="credit_term" class="form-control form-control-sm" value="{{ r.credit_term }}" style="width:80px">
+            <button class="btn btn-sm btn-outline-primary">保存</button>
+          </form>
+          {% else %}<span class="small text-muted">未关联主体</span>{% endif %}
+          {% endif %}
+        </td></tr>
+    {% empty %}
+      <tr><td colspan="9" class="text-muted text-center py-4">暂无数据。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

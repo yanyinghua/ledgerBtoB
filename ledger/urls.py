@@ -28,6 +28,11 @@ from books.views import (
     acceptance_report, acceptance_report_export, acceptance_report_set_opening,
     global_search, global_search_export, invoice_search, invoice_detail,
     invoice_search_export,
+    shop_ledger_list, shop_ledger_export, shop_order_detail, shop_roundoff,
+    shop_receipt_list, shop_receipt_edit, ShopRegistryListView, ShopRegistryCreateView,
+    ShopRegistryUpdateView, ShopRegistryDeleteView, shop_invoice_list,
+    shop_collection, shop_reminder_add, shop_aging, shop_credit_term_update,
+    shop_statements, shop_statement_detail, shop_statement_issue, shop_statement_export,
 )
 
 urlpatterns = [
@@ -115,5 +120,25 @@ urlpatterns = [
     path('normalize/owner-account/<int:pk>/edit/', OwnerAccountMapUpdateView.as_view(), name='norm_owneraccount_edit'),
     path('normalize/owner-account/<int:pk>/delete/', OwnerAccountMapDeleteView.as_view(), name='norm_owneraccount_delete'),
     path('normalize/receipt/', PaymentReceiptListView.as_view(), name='norm_receipt_list'),
+    # 店铺往来账（新主线）
+    path('shop/ledger/', shop_ledger_list, name='shop_ledger_list'),
+    path('shop/ledger/export/', shop_ledger_export, name='shop_ledger_export'),
+    path('shop/order/<int:pk>/', shop_order_detail, name='shop_order_detail'),
+    path('shop/order/<int:pk>/roundoff/', shop_roundoff, name='shop_roundoff'),
+    path('shop/receipts/', shop_receipt_list, name='shop_receipt_list'),
+    path('shop/receipt/<int:pk>/edit/', shop_receipt_edit, name='shop_receipt_edit'),
+    path('shop/registry/', ShopRegistryListView.as_view(), name='shop_registry_list'),
+    path('shop/registry/add/', ShopRegistryCreateView.as_view(), name='shop_registry_add'),
+    path('shop/registry/<int:pk>/edit/', ShopRegistryUpdateView.as_view(), name='shop_registry_edit'),
+    path('shop/registry/<int:pk>/delete/', ShopRegistryDeleteView.as_view(), name='shop_registry_delete'),
+    path('shop/invoices/', shop_invoice_list, name='shop_invoice_list'),
+    path('shop/collection/', shop_collection, name='shop_collection'),
+    path('shop/collection/reminder/', shop_reminder_add, name='shop_reminder_add'),
+    path('shop/aging/', shop_aging, name='shop_aging'),
+    path('shop/aging/credit-term/', shop_credit_term_update, name='shop_credit_term_update'),
+    path('shop/statements/', shop_statements, name='shop_statements'),
+    path('shop/statements/<int:pk>/', shop_statement_detail, name='shop_statement_detail'),
+    path('shop/statements/<int:pk>/issue/', shop_statement_issue, name='shop_statement_issue'),
+    path('shop/statements/<int:pk>/export/', shop_statement_export, name='shop_statement_export'),
     path('r/<str:key>/', placeholder_view, name='placeholder'),
 ]

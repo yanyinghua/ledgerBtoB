@@ -116,6 +116,32 @@ TARGET_FIELD_CHOICES = [
     ('channel_type', '线上/线下'),
     ('owner_name', '货主名称'),
     ('receiving_account_name_raw', '收款户名(原始)'),
+    # 店铺往来账改造字段
+    ('shop_name', '店铺名称'),
+    ('goods_amount', '商品金额'),
+    ('discount_amount', '折扣'),
+    ('refund_amount', '退款'),
+    ('cost_amount', '成本金额'),
+    ('region', '区域'),
+    ('supervisor', '业务主管'),
+    # 订单明细行（detail_ 前缀避免与订单头同名字段冲突）
+    ('detail_no', '明细Id'),
+    ('detail_goods_id', '商品Id'),
+    ('detail_sku_id', '规格Id'),
+    ('detail_sku', 'SKU编码'),
+    ('detail_barcode', '条码'),
+    ('detail_goods_name', '商品名'),
+    ('detail_spec', '销售标题/规格'),
+    ('detail_unit', '销售单位'),
+    ('detail_qty', '数量'),
+    ('detail_unit_price', '单价'),
+    ('detail_subtotal', '小计'),
+    ('detail_discount', '折扣'),
+    ('detail_discounted_subtotal', '扣后小计'),
+    ('detail_paid', '实付额'),
+    ('detail_refund', '退款额'),
+    ('detail_refund_qty', '退货数量'),
+    ('detail_owner_id', '货主Id'),
 ]
 
 # ---------------------------------------------------------------------------
@@ -859,6 +885,15 @@ class Order(models.Model):
     remark = models.TextField('备注', blank=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
+    # 店铺往来账改造：店铺与经营口径字段
+    shop_name = models.CharField('店铺名称', max_length=200, blank=True, db_index=True)
+    goods_amount = models.DecimalField('商品金额', max_digits=18, decimal_places=2, default=0)
+    discount_amount = models.DecimalField('折扣', max_digits=18, decimal_places=2, default=0)
+    refund_amount = models.DecimalField('退款', max_digits=18, decimal_places=2, default=0)
+    cost_amount = models.DecimalField('成本金额', max_digits=18, decimal_places=2, default=0)
+    round_off = models.DecimalField('抹零', max_digits=18, decimal_places=2, default=0)
+    supervisor = models.CharField('业务主管', max_length=50, blank=True, db_index=True)
+    region = models.CharField('区域', max_length=100, blank=True, db_index=True)
 
     class Meta:
         verbose_name = '订单'
@@ -870,11 +905,30 @@ class Order(models.Model):
             models.Index(fields=['merchant', 'order_date']),
             models.Index(fields=['department', 'order_date']),
             models.Index(fields=['match_status']),
+            models.Index(fields=['shop_name', 'order_date']),
+            models.Index(fields=['region', 'order_date']),
         ]
 
     @property
     def unpaid_amount(self):
         return self.total_amount - self.paid_amount
+
+    @property
+    def net_amount(self):
+        """金额口径：订单总额 - 退款 - 抹零。"""
+        return self.total_amount - self.refund_amount - self.round_off
+
+    @property
+    def gross_profit(self):
+        return self.net_amount - self.cost_amount
+
+    @property
+    def gross_margin(self):
+        return float(self.gross_profit / self.net_amount) if self.net_amount > 0 else 0
+
+    @property
+    def gross_margin_pct(self):
+        return round(self.gross_margin * 100, 2)
 
     def __str__(self):
         return f'{self.external_order_no} {self.counterparty_raw_name} {self.direction} {self.total_amount}'
@@ -902,6 +956,40 @@ class OrderPayment(models.Model):
 
     def __str__(self):
         return f'{self.order.external_order_no} {self.pay_date} {self.amount}'
+
+
+class OrderDetail(models.Model):
+    """订单明细行：CSV 一商品一行，按订单号归并后随订单落库，用于按订单id穿透。"""
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='details',
+                              verbose_name='订单')
+    detail_no = models.CharField('明细Id', max_length=100, blank=True, db_index=True)
+    goods_id = models.CharField('商品Id', max_length=100, blank=True)
+    sku_id = models.CharField('规格Id', max_length=100, blank=True)
+    sku = models.CharField('SKU编码', max_length=100, blank=True)
+    barcode = models.CharField('条码', max_length=100, blank=True)
+    goods_name = models.CharField('商品名', max_length=255, blank=True)
+    spec = models.CharField('销售标题/规格', max_length=255, blank=True)
+    unit = models.CharField('销售单位', max_length=20, blank=True)
+    qty = models.DecimalField('数量', max_digits=18, decimal_places=4, default=0)
+    unit_price = models.DecimalField('单价', max_digits=18, decimal_places=4, default=0)
+    subtotal = models.DecimalField('小计', max_digits=18, decimal_places=2, default=0)
+    discount = models.DecimalField('折扣', max_digits=18, decimal_places=2, default=0)
+    discounted_subtotal = models.DecimalField('扣后小计', max_digits=18, decimal_places=2, default=0)
+    paid_amount = models.DecimalField('实付额', max_digits=18, decimal_places=2, default=0)
+    refund_amount = models.DecimalField('退款额', max_digits=18, decimal_places=2, default=0)
+    refund_qty = models.DecimalField('退货数量', max_digits=18, decimal_places=4, default=0)
+    owner_id = models.CharField('货主Id(原始)', max_length=100, blank=True)
+    row_index = models.IntegerField('原表行序', default=0)
+    raw_data = models.JSONField('原始数据', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = '订单明细行'
+        verbose_name_plural = '订单明细行'
+        ordering = ['order_id', 'row_index']
+        indexes = [models.Index(fields=['order', 'row_index'])]
+
+    def __str__(self):
+        return f'{self.order.external_order_no} #{self.row_index} {self.goods_name}'
 
 
 class AccountNameMapping(models.Model):
@@ -1017,6 +1105,7 @@ class CustomerEntity(models.Model):
     platform_customer_id = models.CharField('平台客户ID', max_length=100, blank=True, db_index=True)
     party_type = models.CharField('主体类型', max_length=10,
                                   choices=[('客户', '客户'), ('供应商', '供应商')], default='客户')
+    credit_term = models.PositiveIntegerField('账期天数', default=30)
     is_active = models.BooleanField('启用', default=True)
     remark = models.TextField('备注', blank=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
@@ -1152,6 +1241,11 @@ class PaymentReceipt(models.Model):
     note = models.TextField('备注', blank=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
+    # 回款表管理：店铺名称与编辑留痕
+    shop_name = models.CharField('店铺名称', max_length=200, blank=True, db_index=True)
+    edited_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name='edited_receipts', verbose_name='编辑人')
+    edited_at = models.DateTimeField('编辑时间', null=True, blank=True)
 
     class Meta:
         verbose_name = '收款明细'
@@ -1165,7 +1259,94 @@ class PaymentReceipt(models.Model):
             models.Index(fields=['owner', 'pay_date']),
             models.Index(fields=['entity', 'pay_date']),
             models.Index(fields=['match_status']),
+            models.Index(fields=['shop_name', 'pay_date']),
         ]
+
+    @property
+    def account_type(self):
+        return self.receiving_account.account_type if self.receiving_account_id else '—'
 
     def __str__(self):
         return f'{self.pay_date} {self.payer_name} {self.amount}'
+
+
+# ===========================================================================
+# 店铺往来账：字典 / 催款 / 对账单
+# ===========================================================================
+class ShopBusinessRegistry(models.Model):
+    """店铺名与工商登记名称、统一社会信用代码字典。"""
+    shop_name = models.CharField('店铺名称', max_length=200, unique=True)
+    registered_name = models.CharField('工商登记名称', max_length=300, blank=True)
+    credit_code = models.CharField('统一社会信用代码', max_length=30, blank=True, db_index=True)
+    entity = models.ForeignKey(CustomerEntity, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='shop_registries', verbose_name='客户主体')
+    source = models.CharField('来源', max_length=20, blank=True)
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='created_registries', verbose_name='创建人')
+    updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='updated_registries', verbose_name='更新人')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = '店铺工商字典'
+        verbose_name_plural = '店铺工商字典'
+        ordering = ['shop_name']
+        constraints = [
+            models.UniqueConstraint(fields=['credit_code'], condition=models.Q(credit_code__gt=''),
+                                    name='uniq_shop_credit_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.shop_name} [{self.registered_name or self.credit_code}]'
+
+
+class CollectionReminder(models.Model):
+    """业务员往来催款记录。"""
+    shop_name = models.CharField('店铺名称', max_length=200, blank=True)
+    entity = models.ForeignKey(CustomerEntity, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='reminders', verbose_name='客户主体')
+    salesperson = models.ForeignKey(SalespersonProfile, null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name='reminders',
+                                    verbose_name='业务员')
+    amount = models.DecimalField('催款金额', max_digits=18, decimal_places=2, default=0)
+    due_date = models.DateField('到期日', null=True, blank=True)
+    remind_date = models.DateField('催款日期', null=True, blank=True)
+    method = models.CharField('催款方式', max_length=20, blank=True)
+    content = models.TextField('催款内容', blank=True)
+    operator = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                 verbose_name='登记人')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        verbose_name = '催款记录'
+        verbose_name_plural = '催款记录'
+        ordering = ['-remind_date', '-id']
+
+    def __str__(self):
+        return f'{self.shop_name} {self.remind_date} {self.amount}'
+
+
+class ShopStatement(models.Model):
+    """店铺对账单：期间与汇总落库，明细按期间实时计算。"""
+    letter_no = models.CharField('对账单号', max_length=40, unique=True)
+    shop_name = models.CharField('店铺名称', max_length=200, blank=True)
+    entity = models.ForeignKey(CustomerEntity, null=True, blank=True, on_delete=models.SET_NULL,
+                               related_name='statements', verbose_name='客户主体')
+    period_from = models.DateField('起始日期')
+    period_to = models.DateField('截止日期')
+    amount = models.DecimalField('对账金额', max_digits=18, decimal_places=2, default=0)
+    status = models.CharField('状态', max_length=20, default='待发放')
+    issued_at = models.DateTimeField('发放时间', null=True, blank=True)
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   verbose_name='创建人')
+    remark = models.TextField('备注', blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        verbose_name = '对账单'
+        verbose_name_plural = '对账单'
+        ordering = ['-period_to', '-id']
+
+    def __str__(self):
+        return f'{self.letter_no} {self.shop_name} {self.period_from}~{self.period_to}'

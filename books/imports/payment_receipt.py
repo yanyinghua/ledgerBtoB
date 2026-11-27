@@ -218,6 +218,12 @@ def _build_receipt(raw, mappings, upload, stats=None, default_owner=None, ref_pr
     if cr:
         r.entity = cr.obj
 
+    # 店铺名称：优先归一到的客户主体名，其次关联订单的店铺名
+    if r.entity_id:
+        r.shop_name = r.entity.name
+    elif r.order_id and r.order.shop_name:
+        r.shop_name = r.order.shop_name
+
     # 货主归一：行内ID/名称优先，否则用导入时指定的默认货主
     orr = resolve_owner(platform_owner_id=platform_owner_id, owner_name=owner_name)
     if orr:

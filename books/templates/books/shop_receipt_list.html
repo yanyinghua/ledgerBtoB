@@ -1,0 +1,52 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}回款管理 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">回款表管理</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <form method="get" class="row g-2">
+    <div class="col-auto"><input name="shop_name" class="form-control" value="{{ filters.shop_name }}" placeholder="店铺名称"></div>
+    <div class="col-auto"><input name="payer" class="form-control" value="{{ filters.payer }}" placeholder="付款人"></div>
+    <div class="col-auto"><input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}"></div>
+    <div class="col-auto"><input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}"></div>
+    <div class="col-auto"><button class="btn btn-primary btn-sm">筛选</button></div>
+  </form>
+</div></div>
+<div class="alert alert-light py-2 mb-2">共 <strong>{{ summary.cnt }}</strong> 笔 ｜ 金额 <strong>{{ summary.amount|cny }}</strong></div>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-bordered align-middle">
+    <thead class="table-light"><tr>
+      <th>收款账户类型</th><th>收款日期</th><th class="text-end">金额</th><th>付款人</th>
+      <th>付款账号</th><th>店铺名称</th><th>编辑人</th><th>编辑时间</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.account_type }}</td>
+        <td>{{ r.pay_date|date:'Y-m-d'|default:'-' }}</td>
+        <td class="text-end">{{ r.amount|cny }}</td>
+        <td>{{ r.payer_name|default:'-' }}</td>
+        <td>{{ r.payer_account|default:'-' }}</td>
+        <td>
+          {% if can_edit %}
+          <form method="post" action="{% url 'shop_receipt_edit' r.pk %}" class="d-flex gap-1">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input list="shop_list" name="shop_name" class="form-control form-control-sm" value="{{ r.shop_name }}" style="min-width:160px">
+            <button class="btn btn-sm btn-outline-primary">保存</button>
+          </form>
+          {% else %}{{ r.shop_name|default:'-' }}{% endif %}
+        </td>
+        <td>{{ r.edited_by.username|default:'-' }}</td>
+        <td>{{ r.edited_at|date:'Y-m-d H:i'|default:'-' }}</td>
+        <td><span class="badge bg-secondary small">{{ r.match_status }}</span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="9" class="text-muted text-center py-4">暂无回款记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<datalist id="shop_list">{% for s in shop_choices %}<option value="{{ s }}">{% endfor %}</datalist>
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

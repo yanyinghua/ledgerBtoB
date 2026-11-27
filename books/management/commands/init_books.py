@@ -74,10 +74,14 @@ LAKALA_MAPPINGS = {
         ('客户Id', 'platform_customer_id', [('none', {})], 0),
         ('店铺Id', 'platform_shop_id', [('none', {})], 0),
         ('收货人', 'counterparty_raw_name', [('trim', {})], 50),  # 兼容旧导出
+        ('客户名称', 'shop_name', [('trim', {})], 0),  # 店铺名称（与订单户名同源）
         # —— 金额 ——
         ('订单总额', 'total_amount', [('to_decimal', {})], 0),
         ('订单实收款', 'paid_amount', [('to_decimal', {})], 0),
-        ('商品总额', 'total_amount', [('to_decimal', {})], 20),
+        ('商品总额', 'goods_amount', [('to_decimal', {})], 0),
+        ('总折扣', 'discount_amount', [('to_decimal', {})], 0),
+        ('线上支付-退款额', 'refund_amount', [('sum_columns', {'columns': ['线上支付-退款额', '到货付款-退货额']})], 0),
+        ('订单成本', 'cost_amount', [('to_decimal', {})], 0),
         ('实付额', 'paid_amount', [('to_decimal', {})], 20),
         # —— 日期 ——
         ('下单时间', 'order_date', [('to_date', {})], 0),
@@ -93,7 +97,7 @@ LAKALA_MAPPINGS = {
         # —— 商品 / 业务员 / 地址 ——
         ('商品名', 'goods_summary', [('none', {})], 0),
         ('销售标题', 'goods_summary', [('none', {})], 10),
-        ('片区', 'salesperson_name', [('none', {})], 0),
+        ('片区', 'region', [('none', {})], 0),
         ('下单人', 'salesperson_name', [('none', {})], 10),
         ('收货地址', 'remark', [('none', {})], 0),
         # —— 兼容旧 xlsx 导出（订单中心）：复合列用正则提取 ——
@@ -136,6 +140,31 @@ LAKALA_MAPPINGS = {
 LAKALA_MAPPINGS['lakala_order_api'] = (LAKALA_MAPPINGS['lakala_order'] +
                                        LAKALA_MAPPINGS['lakala_order_api'])
 
+# 订单明细行映射（CSV 一商品一行）。detail_ 前缀避免与订单头同名字段冲突。
+# 格式：(原始列名, 目标字段, [(算子key, 参数), ...], order)
+LAKALA_DETAIL_MAPPINGS = {
+    'lakala_order': [
+        ('明细Id', 'detail_no', [('none', {})], 0),
+        ('商品Id', 'detail_goods_id', [('none', {})], 0),
+        ('规格Id', 'detail_sku_id', [('none', {})], 0),
+        ('SKU编码', 'detail_sku', [('none', {})], 0),
+        ('条形码', 'detail_barcode', [('none', {})], 0),
+        ('商品名', 'detail_goods_name', [('none', {})], 0),
+        ('销售标题', 'detail_spec', [('none', {})], 0),
+        ('销售单位', 'detail_unit', [('none', {})], 0),
+        ('数量', 'detail_qty', [('to_decimal', {})], 0),
+        ('单价', 'detail_unit_price', [('to_decimal', {})], 0),
+        ('小计', 'detail_subtotal', [('to_decimal', {})], 0),
+        ('折扣', 'detail_discount', [('to_decimal', {})], 0),
+        ('扣后小计', 'detail_discounted_subtotal', [('to_decimal', {})], 0),
+        ('实付额', 'detail_paid', [('to_decimal', {})], 0),
+        ('退款额', 'detail_refund', [('to_decimal', {})], 0),
+        ('退货数量', 'detail_refund_qty', [('to_decimal', {})], 0),
+        ('货主Id', 'detail_owner_id', [('none', {})], 0),
+    ],
+}
+LAKALA_DETAIL_MAPPINGS['lakala_order_api'] = LAKALA_DETAIL_MAPPINGS['lakala_order']
+
 
 # 收款明细占位列映射：真实表头到位后只需在此增删别名/调整 order。
 PAYMENT_MAPPINGS = {
@@ -176,8 +205,12 @@ def seed_lakala_mappings(self, reset=False):
     切换到真实表头时清理旧别名，避免同 target 多条 order 相同导致取错列）。
     """
     created = updated = 0
-    all_mappings = dict(LAKALA_MAPPINGS)
-    all_mappings.update(PAYMENT_MAPPINGS)
+    # 同源的订单头映射与明细映射必须合并，不能互相覆盖
+    all_mappings = {k: list(v) for k, v in LAKALA_MAPPINGS.items()}
+    for source_type, rows in LAKALA_DETAIL_MAPPINGS.items():
+        all_mappings.setdefault(source_type, []).extend(rows)
+    for source_type, rows in PAYMENT_MAPPINGS.items():
+        all_mappings.setdefault(source_type, []).extend(rows)
 
     if reset:
         wanted = set()

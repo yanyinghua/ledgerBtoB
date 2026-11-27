@@ -1,0 +1,60 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}业务员往来催款 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">业务员往来催款管理</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto"><input type="date" name="as_of" class="form-control" value="{{ as_of|date:'Y-m-d' }}"></div>
+  <div class="col-auto">
+    <select name="salesperson" class="form-select">
+      <option value="">全部业务员</option>
+      {% for s in salespeople %}<option value="{{ s.name }}" {% if salesperson == s.name %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto"><button class="btn btn-primary btn-sm">筛选</button></div>
+</form>
+<div class="table-responsive mb-3">
+  <table class="table table-sm table-striped table-bordered">
+    <thead class="table-light"><tr><th>店铺名称</th><th>业务员</th><th class="text-end">未收金额</th>
+      <th class="text-end">未到期</th><th class="text-end">1-30天</th><th class="text-end">31-60天</th>
+      <th class="text-end">61-90天</th><th class="text-end">90天以上</th><th class="text-end">逾期</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.shop_name }}</td><td>{{ r.salesperson }}</td>
+        <td class="text-end">{{ r.total|cny }}</td><td class="text-end">{{ r.b1|cny }}</td>
+        <td class="text-end">{{ r.b2|cny }}</td><td class="text-end">{{ r.b3|cny }}</td>
+        <td class="text-end">{{ r.b4|cny }}</td><td class="text-end">{{ r.overdue|cny }}</td>
+        <td><button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#rem-{{ forloop.counter }}">催款</button></td></tr>
+      <tr class="collapse" id="rem-{{ forloop.counter }}"><td colspan="10">
+        <form method="post" action="{% url 'shop_reminder_add' %}" class="row g-2">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <input type="hidden" name="shop_name" value="{{ r.shop_name }}">
+          <div class="col-auto"><input name="amount" class="form-control form-control-sm" placeholder="催款金额"></div>
+          <div class="col-auto"><input type="date" name="due_date" class="form-control form-control-sm"></div>
+          <div class="col-auto"><input name="method" class="form-control form-control-sm" placeholder="方式(电话/微信)"></div>
+          <div class="col-auto"><input name="content" class="form-control form-control-sm" placeholder="催款内容"></div>
+          <div class="col-auto"><button class="btn btn-sm btn-primary">登记</button></div>
+        </form>
+      </td></tr>
+    {% empty %}
+      <tr><td colspan="10" class="text-muted text-center py-4">暂无未收款记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs=querystring %}
+<h6 class="mb-2">最近催款记录</h6>
+<div class="table-responsive">
+  <table class="table table-sm table-bordered">
+    <thead class="table-light"><tr><th>店铺</th><th>催款日期</th><th>金额</th><th>方式</th><th>内容</th><th>登记人</th></tr></thead>
+    <tbody>
+    {% for rem in reminders %}
+      <tr><td>{{ rem.shop_name }}</td><td>{{ rem.remind_date|date:'Y-m-d'|default:'-' }}</td>
+          <td>{{ rem.amount|cny }}</td><td>{{ rem.method|default:'-' }}</td>
+          <td>{{ rem.content|default:'-' }}</td><td>{{ rem.operator.username|default:'-' }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="text-center text-muted">暂无催款记录。</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

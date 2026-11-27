@@ -11,6 +11,7 @@ from books.models import (
     Department, SalespersonProfile, Merchant, ReceivingAccount, Counterparty,
     Order, OrderPayment, AccountNameMapping, AccountNameAlias, InvitedPhone, SmsCode,
     CustomerEntity, CustomerAlias, Owner, OwnerAccountMap, PaymentReceipt,
+    OrderDetail, ShopBusinessRegistry, CollectionReminder, ShopStatement,
 )
 from books.forms import MappingStepForm, LogicRuleForm
 
@@ -22,7 +23,7 @@ _TARGET_LINKS = {
     'SourceUpload': ('import_list', False),
     'AcceptanceOpeningBalance': ('acceptance_report', False),
     'AccountNameMapping': ('accountname_edit', True),
-    'Order': ('order_detail', True),
+    'Order': ('shop_order_detail', True),
 }
 
 
@@ -455,9 +456,37 @@ class OwnerAccountMapAdmin(admin.ModelAdmin):
 @admin.register(PaymentReceipt)
 class PaymentReceiptAdmin(admin.ModelAdmin):
     list_display = ('pay_date', 'payer_name', 'amount', 'channel_type', 'pay_method',
-                    'owner', 'entity', 'receiving_account', 'match_status')
+                    'owner', 'entity', 'receiving_account', 'shop_name', 'edited_by', 'match_status')
     list_filter = ('channel_type', 'pay_method', 'match_status')
-    search_fields = ('payer_name', 'payer_account', 'external_ref', 'receiving_account_name')
+    search_fields = ('payer_name', 'payer_account', 'external_ref', 'receiving_account_name',
+                     'shop_name')
     date_hierarchy = 'pay_date'
     raw_id_fields = ('source_upload', 'raw_row', 'receiving_account', 'owner',
                      'entity', 'order')
+
+
+@admin.register(OrderDetail)
+class OrderDetailAdmin(admin.ModelAdmin):
+    list_display = ('order', 'row_index', 'detail_no', 'goods_name', 'qty', 'unit_price', 'subtotal')
+    search_fields = ('order__external_order_no', 'goods_name', 'detail_no')
+    raw_id_fields = ('order',)
+
+
+@admin.register(ShopBusinessRegistry)
+class ShopBusinessRegistryAdmin(admin.ModelAdmin):
+    list_display = ('shop_name', 'registered_name', 'credit_code', 'entity', 'source', 'updated_by')
+    search_fields = ('shop_name', 'registered_name', 'credit_code')
+    raw_id_fields = ('entity',)
+
+
+@admin.register(CollectionReminder)
+class CollectionReminderAdmin(admin.ModelAdmin):
+    list_display = ('shop_name', 'remind_date', 'due_date', 'amount', 'salesperson', 'operator')
+    search_fields = ('shop_name', 'content')
+
+
+@admin.register(ShopStatement)
+class ShopStatementAdmin(admin.ModelAdmin):
+    list_display = ('letter_no', 'shop_name', 'period_from', 'period_to', 'amount', 'status')
+    search_fields = ('letter_no', 'shop_name')
+    raw_id_fields = ('entity',)

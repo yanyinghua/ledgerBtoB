@@ -1,0 +1,41 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% block title %}对账单管理 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">对账单管理</h5>
+{% if messages %}{% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}{% endif %}
+{% if role == '管理员' or role == '高层' %}
+<div class="card shadow-sm mb-3"><div class="card-body">
+  <form method="post" class="row g-2 align-items-end">
+    {% csrf_token %}
+    <div class="col-auto"><label class="form-label">店铺</label>
+      <input list="shop_list" name="shop_name" class="form-control" required placeholder="店铺名称"></div>
+    <div class="col-auto"><label class="form-label">起始日期</label><input type="date" name="period_from" class="form-control" required></div>
+    <div class="col-auto"><label class="form-label">截止日期</label><input type="date" name="period_to" class="form-control" required></div>
+    <div class="col-auto"><label class="form-label">备注</label><input name="remark" class="form-control"></div>
+    <div class="col-auto"><button class="btn btn-primary btn-sm">生成对账单</button></div>
+  </form>
+  <datalist id="shop_list">{% for s in shop_choices %}<option value="{{ s }}">{% endfor %}</datalist>
+</div></div>
+{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-auto"><input name="shop_name" class="form-control" value="{{ shop_name }}" placeholder="按店铺筛选"></div>
+  <div class="col-auto"><button class="btn btn-outline-secondary btn-sm">筛选</button></div>
+</form>
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-bordered">
+    <thead class="table-light"><tr><th>对账单号</th><th>店铺</th><th>期间</th><th class="text-end">金额</th><th>状态</th><th>发放时间</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><a href="{% url 'shop_statement_detail' r.pk %}">{{ r.letter_no }}</a></td>
+          <td>{{ r.shop_name }}</td><td>{{ r.period_from|date:'Y-m-d' }} ~ {{ r.period_to|date:'Y-m-d' }}</td>
+          <td class="text-end">{{ r.amount|cny }}</td><td>{{ r.status }}</td>
+          <td>{{ r.issued_at|date:'Y-m-d H:i'|default:'-' }}</td><td></td></tr>
+    {% empty %}
+      <tr><td colspan="7" class="text-muted text-center py-4">暂无对账单。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs="" %}
+{% endblock %}

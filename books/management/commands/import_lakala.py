@@ -14,6 +14,25 @@ from django.core.management.base import BaseCommand
 from books.imports.lakala import run_import_lakala, run_import_lakala_incremental
 
 
+class _NamedFile:
+    """给普通文件对象附上可读的 name（BufferedReader.name 只读，不能直接赋值）。"""
+    def __init__(self, file_obj, name):
+        self._file = file_obj
+        self.name = name
+
+    def read(self, *args, **kwargs):
+        return self._file.read(*args, **kwargs)
+
+    def seek(self, *args, **kwargs):
+        return self._file.seek(*args, **kwargs)
+
+    def tell(self):
+        return self._file.tell()
+
+    def __getattr__(self, item):
+        return getattr(self._file, item)
+
+
 class Command(BaseCommand):
     help = '导入拉卡拉订单（Excel → Order + OrderPayment）'
 
@@ -55,7 +74,7 @@ class Command(BaseCommand):
         fn = run_import_lakala_incremental if options['incremental'] else run_import_lakala
         for path in files:
             with open(path, 'rb') as f:
-                f.name = os.path.basename(path)
-                upload = fn(options['source_type'], f, user, tag=options['tag'])
+                named = _NamedFile(f, os.path.basename(path))
+                upload = fn(options['source_type'], named, user, tag=options['tag'])
             style = self.style.SUCCESS if upload.status in ('success', 'empty') else self.style.ERROR
             self.stdout.write(style(f'{os.path.basename(path)}: {upload.status} - {upload.note}'))

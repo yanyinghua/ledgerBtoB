@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}往来账管理系统{% endblock %}</title>
+  <title>{% block title %}店铺往来账{% endblock %}</title>
   <link href="{% static 'books/vendor/bootstrap.min.css' %}" rel="stylesheet">
   <style>
     body { background: #f5f6f8; }
@@ -45,7 +45,7 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
   <div class="container-fluid">
-    <a class="navbar-brand" href="{% url 'home' %}">往来账管理系统</a>
+    <a class="navbar-brand" href="{% url 'home' %}">店铺往来账</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navmenu"
             aria-controls="navmenu" aria-expanded="false" aria-label="切换导航">
       <span class="navbar-toggler-icon"></span>
@@ -54,56 +54,36 @@
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">首页</a></li>
         {% if can_view %}
-        <li class="nav-item"><a class="nav-link" href="{% url 'order_list' %}">订单管理</a></li>
-        <li class="nav-item"><a class="nav-link" href="{% url 'order_dashboard' %}">应收应付看板</a></li>
-        {% if is_exec_or_admin %}
-        <li class="nav-item"><a class="nav-link" href="{% url 'admin_authorize' %}">用户授权</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_ledger_list' %}">往来明细</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_receipt_list' %}">回款管理</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_collection' %}">催款管理</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_aging' %}">账期管理</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_statements' %}">对账单</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_invoice_list' %}">店铺开票</a></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'shop_registry_list' %}">店铺字典</a></li>
         {% endif %}
-        {% endif %}
-        {% if user_role == '管理员' %}
-        <li class="nav-item"><a class="nav-link" href="{% url 'import_upload' %}">导入数据</a></li>
-        <li class="nav-item"><a class="nav-link" href="{% url 'import_lakala' %}">导入拉卡拉订单</a></li>
-        {% endif %}
-        <li class="nav-item"><a class="nav-link" href="{% url 'import_list' %}">导入记录</a></li>
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle" href="#" id="dataMenu" role="button"
              data-bs-toggle="dropdown" aria-expanded="false">基础数据</a>
           <ul class="dropdown-menu" aria-labelledby="dataMenu">
             {% if can_view %}
+            <li><a class="dropdown-item" href="{% url 'norm_entity_list' %}">客户主体（账期维护）</a></li>
             <li><a class="dropdown-item" href="{% url 'norm_review' %}">归一待复核</a></li>
-            <li><a class="dropdown-item" href="{% url 'norm_entity_list' %}">客户主体</a></li>
-            <li><a class="dropdown-item" href="{% url 'norm_alias_list' %}">客户归一字典</a></li>
-            <li><a class="dropdown-item" href="{% url 'norm_owner_list' %}">货主</a></li>
-            <li><a class="dropdown-item" href="{% url 'norm_owneraccount_list' %}">货主收款账户</a></li>
-            <li><a class="dropdown-item" href="{% url 'norm_receipt_list' %}">收款明细</a></li>
+            <li><a class="dropdown-item" href="{% url 'import_list' %}">导入记录</a></li>
+            {% endif %}
+            {% if user_role == '管理员' %}
             <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{% url 'accountname_list' %}">户名匹配映射（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'accountname_review' %}">待复核户名（旧）</a></li>
+            <li><a class="dropdown-item" href="{% url 'import_lakala' %}">导入订单</a></li>
+            <li><a class="dropdown-item" href="{% url 'import_payment_page' %}">导入回款</a></li>
+            <li><a class="dropdown-item" href="{% url 'import_upload' %}">导入旧数据/发票</a></li>
+            {% endif %}
+            {% if is_exec_or_admin %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="{% url 'admin_authorize' %}">用户授权</a></li>
             {% endif %}
             {% if is_admin %}
             <li><a class="dropdown-item" href="{% url 'invited_list' %}">邀请白名单</a></li>
             {% endif %}
-            <li><hr class="dropdown-divider"></li>
-            <li><a class="dropdown-item" href="{% url 'namemap_list' %}">名称映射库（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'customer_list' %}">客户-业务员映射（旧）</a></li>
-          </ul>
-        </li>
-        <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle" href="#" id="moreMenu" role="button"
-             data-bs-toggle="dropdown" aria-expanded="false">更多功能</a>
-          <ul class="dropdown-menu" aria-labelledby="moreMenu">
-            {% if is_admin %}
-            <li><a class="dropdown-item" href="{% url 'sales_perf' %}">业务员开票回款明细（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'invoice_search' %}">发票检索（旧）</a></li>
-            <li><hr class="dropdown-divider"></li>
-            {% endif %}
-            <li><a class="dropdown-item" href="{% url 'aging' %}">账期管理（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'reconcile' %}">对账单管理（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'collection' %}">分业务员客户催款管理（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'deposit' %}">保证金管理（旧）</a></li>
-            <li><a class="dropdown-item" href="{% url 'acceptance' %}">票据检索（承兑/迪链）</a></li>
-            <li><a class="dropdown-item" href="{% url 'acceptance_report' %}">承兑收付款统计报表</a></li>
-            <li><a class="dropdown-item" href="{% url 'global_search' %}">综合查询</a></li>
           </ul>
         </li>
         <li class="nav-item"><a class="nav-link" href="{% url 'password_change' %}">修改密码</a></li>

@@ -14,6 +14,25 @@ from django.core.management.base import BaseCommand
 from books.imports.payment_receipt import run_import_payment_receipt
 
 
+class _NamedFile:
+    """给普通文件对象附上可读的 name（BufferedReader.name 只读，不能直接赋值）。"""
+    def __init__(self, file_obj, name):
+        self._file = file_obj
+        self.name = name
+
+    def read(self, *args, **kwargs):
+        return self._file.read(*args, **kwargs)
+
+    def seek(self, *args, **kwargs):
+        return self._file.seek(*args, **kwargs)
+
+    def tell(self):
+        return self._file.tell()
+
+    def __getattr__(self, item):
+        return getattr(self._file, item)
+
+
 class Command(BaseCommand):
     help = '导入收款明细（Excel → PaymentReceipt + 客户/货主归一）'
 
@@ -50,9 +69,9 @@ class Command(BaseCommand):
         user = self._user()
         for path in files:
             with open(path, 'rb') as f:
-                f.name = os.path.basename(path)
+                named = _NamedFile(f, os.path.basename(path))
                 upload = run_import_payment_receipt(
-                    f, user, incremental=options['incremental'],
+                    named, user, incremental=options['incremental'],
                     default_owner=options['owner_id'], sheet_hint=options['sheet'])
             style = self.style.SUCCESS if upload.status in ('success', 'empty') else self.style.ERROR
             self.stdout.write(style(f'{os.path.basename(path)}: {upload.status} - {upload.note}'))

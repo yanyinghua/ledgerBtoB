@@ -1,0 +1,114 @@
+{% extends 'books/base.html' %}
+{% load money %}
+{% load sortable %}
+{% block title %}往来明细 - 店铺往来账{% endblock %}
+{% block content %}
+<h5 class="mb-3">往来明细 / 订单检索</h5>
+{% if messages %}
+  {% for m in messages %}<div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>{% endfor %}
+{% endif %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2">
+      <div class="col-6 col-md-2">
+        <label class="form-label">订单id</label>
+        <input name="order_no" class="form-control" value="{{ filters.order_no }}" placeholder="订单id">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">店铺名称</label>
+        <input name="shop_name" class="form-control" value="{{ filters.shop_name }}" placeholder="店铺">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">业务员</label>
+        <input name="salesperson" class="form-control" value="{{ filters.salesperson }}" placeholder="姓名/账号">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">区域</label>
+        <select name="region" class="form-select">
+          <option value="">全部</option>
+          {% for r in regions %}<option value="{{ r }}" {% if filters.region == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">状态</label>
+        <select name="status" class="form-select">
+          <option value="">全部</option>
+          {% for s in statuses %}<option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">关键字</label>
+        <input name="q" class="form-control" value="{{ filters.q }}" placeholder="订单id/店铺/商品">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">起始日期</label>
+        <input type="date" name="date_from" class="form-control" value="{{ filters.date_from }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">截止日期</label>
+        <input type="date" name="date_to" class="form-control" value="{{ filters.date_to }}">
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary btn-sm">筛选</button>
+        <a href="{% url 'shop_ledger_export' %}?{{ querystring }}" class="btn btn-outline-secondary btn-sm">导出 Excel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="alert alert-light py-2 mb-2">
+  共 <strong>{{ summary.cnt }}</strong> 单 ｜ 金额 <strong>{{ summary.net|cny }}</strong>
+  ｜ 商品金额 <strong>{{ summary.goods|cny }}</strong> ｜ 退款 <strong>{{ summary.refund|cny }}</strong>
+  ｜ 成本 <strong>{{ summary.cost|cny }}</strong> ｜ 毛利 <strong>{{ summary.profit|cny }}</strong>
+  ｜ 毛利率 <strong>{{ summary.margin|floatformat:"2" }}%</strong>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm table-striped table-bordered align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>单据类型</th>
+        <th>{% sort_link sort "shop" "店铺名称" %}</th>
+        <th>{% sort_link sort "order_no" "订单id" %}</th>
+        <th>{% sort_link sort "date" "日期" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "amount" "金额" "desc" %}</th>
+        <th class="text-end">商品金额</th>
+        <th class="text-end">折扣</th>
+        <th class="text-end">{% sort_link sort "refund" "退款" "desc" %}</th>
+        <th class="text-end">{% sort_link sort "cost" "成本金额" "desc" %}</th>
+        <th class="text-end">毛利</th>
+        <th class="text-end">毛利率</th>
+        <th>状态</th>
+        <th>业务员</th>
+        <th>{% sort_link sort "supervisor" "业务主管" %}</th>
+        <th>{% sort_link sort "region" "区域" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for o in orders %}
+      <tr>
+        <td>订单</td>
+        <td title="{{ o.shop_name }}">{{ o.shop_name|default:'-' }}</td>
+        <td><a href="{% url 'shop_order_detail' o.pk %}" title="穿透查询订单明细">{{ o.external_order_no }}</a></td>
+        <td>{{ o.order_date|date:'Y-m-d'|default:'-' }}</td>
+        <td class="text-end">{{ o.net_amount|cny }}</td>
+        <td class="text-end">{{ o.goods_amount|cny }}</td>
+        <td class="text-end">{{ o.discount_amount|cny }}</td>
+        <td class="text-end">{{ o.refund_amount|cny }}</td>
+        <td class="text-end">{{ o.cost_amount|cny }}</td>
+        <td class="text-end">{{ o.gross_profit|cny }}</td>
+        <td class="text-end">{{ o.gross_margin_pct|floatformat:"2" }}%</td>
+        <td>{{ o.order_status|default:'-' }}</td>
+        <td>{{ o.salesperson.name|default:o.salesperson_raw|default:'-' }}</td>
+        <td>{{ o.supervisor|default:'-' }}</td>
+        <td>{{ o.region|default:'-' }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="15" class="text-muted text-center py-4">该筛选条件下无记录。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "books/_pagination.html" with page_qs=querystring %}
+{% endblock %}

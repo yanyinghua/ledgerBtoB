@@ -1,5 +1,5 @@
 {% extends 'books/base.html' %}
-{% block title %}首页 - 往来账管理系统{% endblock %}
+{% block title %}首页 - 店铺往来账{% endblock %}
 {% block content %}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
@@ -21,16 +21,15 @@
 
 <h5>快捷入口</h5>
 <div class="row row-cols-2 row-cols-md-4 g-3">
-  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'order_list' %}">订单管理</a></div>
-  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'order_dashboard' %}">应收应付看板</a></div>
-  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'accountname_list' %}">户名匹配</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_ledger_list' %}">往来明细 / 订单检索</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_receipt_list' %}">回款管理</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_collection' %}">业务员催款</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_aging' %}">账期管理</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_statements' %}">对账单</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_invoice_list' %}">店铺开票记录</a></div>
+  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'shop_registry_list' %}">店铺工商字典</a></div>
   {% if is_exec_or_admin %}
-  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'admin_authorize' %}">用户授权</a></div>
+  <div class="col"><a class="btn btn-outline-secondary w-100 py-3" href="{% url 'admin_authorize' %}">用户授权</a></div>
   {% endif %}
-  {% if role == '管理员' %}
-  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'import_lakala' %}">导入拉卡拉订单</a></div>
-  <div class="col"><a class="btn btn-outline-primary w-100 py-3" href="{% url 'import_upload' %}">导入旧数据</a></div>
-  {% endif %}
-  <div class="col"><a class="btn btn-outline-secondary w-100 py-3" href="{% url 'admin:index' %}" target="_blank">后台管理</a></div>
 </div>
 {% endblock %}
