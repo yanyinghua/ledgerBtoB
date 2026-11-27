@@ -29,6 +29,9 @@ env/
 staticfiles/
 media/
 
+# 附件：用户提供的样例数据/截图，含真实客户、账号、交易信息，禁止入库
+附件/
+
 # 对账未匹配清单导出（reconcile_unmatched 默认输出，含业务数据，禁止入库）
 reconcile_unmatched/
 
