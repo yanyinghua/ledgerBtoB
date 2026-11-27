@@ -3775,6 +3775,40 @@ class B2bShopLedgerTest(TestCase):
                                {'raw': raw})
         self.assertEqual(total, 50)
 
+    def test_xlsx_composite_detail_split(self):
+        from books.imports.lakala import split_detail_values
+        d = {
+            'detail_no': 'D1，D2', 'goods_name': '商品A，商品B',
+            'sku': 'S1，S2', 'barcode': 'b1,11，b2,22',
+            'sales_title': '甲 ￥300.00/件 ×1件 ￥300.00  乙 ￥200.00/件 ×1件 ￥200.00',
+        }
+        parts = split_detail_values(d)
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(parts[0]['barcode'], 'b1,11')  # ASCII 逗号属于同一商品
+        self.assertEqual(parts[1]['goods_name'], '商品B')
+        self.assertEqual(parts[1]['unit_price'], 200)
+        self.assertEqual(parts[1]['subtotal'], 200)
+
+    def test_backfill_order_fields_and_details_from_raw(self):
+        up = SourceUpload.objects.create(source_type='lakala_order', file_name='backfill-test')
+        raw = {
+            'id': 'BACKFILL-TEST', '客户Id': '回填店铺', '订单总额': '100',
+            '订单实收款': '100', '总成本': '90', '总折扣': '5', '片区': '测试片区',
+            '明细id': 'X1，X2', '商品名': '商品甲，商品乙', '规格编码': 'K1，K2',
+            '条码': 'B1，B2', '销售标题': '甲 ￥60.00/件 ×1件 ￥60.00  乙 ￥40.00/件 ×1件 ￥40.00',
+        }
+        rr = RawImportRow.objects.create(source_upload=up, data=raw)
+        o = Order.objects.create(source_type='lakala_order',
+                                 external_order_no='BACKFILL-TEST',
+                                 raw_row=rr, total_amount=100, paid_amount=100)
+        call_command('backfill_order_raw_fields', verbosity=0)
+        o.refresh_from_db()
+        self.assertEqual(o.cost_amount, 90)
+        self.assertEqual(o.discount_amount, 5)
+        self.assertEqual(o.shop_name, '回填店铺')
+        self.assertEqual(o.details.count(), 2)
+        self.assertEqual(o.details.first().subtotal, 60)
+
     def test_zero_amount_with_cost_order_imported(self):
         """零单价赠品单有真实成本，应入库；金额成本均为 0 才跳过。"""
         mappings = [

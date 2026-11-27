@@ -7,6 +7,8 @@ _read_sheet / _serialize / _canon_hash），但构建层改为 Order + OrderPaym
 去重：优先 external_order_no（同 source_type 唯一），缺失时回退
 (order_date, total_amount, counterparty_raw_name, direction) 自然键。
 """
+import re
+
 import pandas as pd
 from django.db import transaction
 
@@ -110,6 +112,58 @@ def merge_detail_rows(raws, mappings):
     for key in order_seq:
         head, details = merged[key]
         yield head, details
+
+
+def _split_cn(value):
+    """按中文逗号拆分复合列；保留 ASCII 逗号（xlsx 条码列同一商品内有多个条码）。"""
+    s = str(value or '').strip()
+    if not s:
+        return []
+    return [x.strip() for x in s.split('，') if x.strip()]
+
+
+_SALES_ITEM_RE = re.compile(
+    r'￥\s*([\d,.]+)\s*/\s*\S+\s+×\s*([\d.]+)\s*\S*\s+￥\s*([\d,.]+)')
+
+
+def _parse_sales_title(title):
+    """从「销售标题」复合列解析每项单价/数量/小计。"""
+    out = []
+    for m in _SALES_ITEM_RE.finditer(str(title or '')):
+        price = to_decimal(m.group(1).replace(',', ''))
+        qty = to_decimal(m.group(2))
+        subtotal = to_decimal(m.group(3).replace(',', ''))
+        out.append((price, qty, subtotal))
+    return out
+
+
+def split_detail_values(d):
+    """把一行复合明细拆成多条明细 dict。
+
+    - CSV 明细级导入：每行本来就是一条明细，原样返回。
+    - 订单中心 xlsx：一行订单里用「，」拼接多个明细id/商品名/规格编码/条码，
+      并从销售标题解析每项的单价/数量/小计，拆回多条明细清单。
+    """
+    names = _split_cn(d.get('goods_name'))
+    ids = _split_cn(d.get('detail_no'))
+    skus = _split_cn(d.get('sku'))
+    barcodes = _split_cn(d.get('barcode'))
+    sales = _parse_sales_title(d.get('sales_title'))
+    n = max(len(names), len(ids), len(skus), len(barcodes), len(sales), 1)
+    parts = []
+    for i in range(n):
+        p = dict(d)
+        p.setdefault('qty', to_decimal(0))
+        p.setdefault('unit_price', to_decimal(0))
+        p.setdefault('subtotal', to_decimal(0))
+        p['detail_no'] = ids[i] if i < len(ids) else ''
+        p['goods_name'] = names[i] if i < len(names) else ''
+        p['sku'] = skus[i] if i < len(skus) else ''
+        p['barcode'] = barcodes[i] if i < len(barcodes) else ''
+        if i < len(sales):
+            p['unit_price'], p['qty'], p['subtotal'] = sales[i]
+        parts.append(p)
+    return parts
 
 
 def _infer_direction(fields, raw):
@@ -253,29 +307,34 @@ def _build_order(source_type, raw, mappings, upload, stats=None, details=None):
 
     # 明细行：逐行抽取 detail_* 字段，暂存待订单落库后回填 FK
     pending_details = []
-    for idx, drow in enumerate(details or []):
+    row_index = 0
+    for drow in details or []:
         df = extract_fields(drow, mappings)
-        pending_details.append(OrderDetail(
-            detail_no=str(df.get('detail_no', '')).strip(),
-            goods_id=str(df.get('detail_goods_id', '')).strip(),
-            sku_id=str(df.get('detail_sku_id', '')).strip(),
-            sku=str(df.get('detail_sku', '')).strip(),
-            barcode=str(df.get('detail_barcode', '')).strip(),
-            goods_name=str(df.get('detail_goods_name', '')).strip(),
-            spec=str(df.get('detail_spec', '')).strip(),
-            unit=str(df.get('detail_unit', '')).strip(),
-            qty=to_decimal(df.get('detail_qty')),
-            unit_price=to_decimal(df.get('detail_unit_price')),
-            subtotal=to_decimal(df.get('detail_subtotal')),
-            discount=to_decimal(df.get('detail_discount')),
-            discounted_subtotal=to_decimal(df.get('detail_discounted_subtotal')),
-            paid_amount=to_decimal(df.get('detail_paid')),
-            refund_amount=to_decimal(df.get('detail_refund')),
-            refund_qty=to_decimal(df.get('detail_refund_qty')),
-            owner_id=str(df.get('detail_owner_id', '')).strip(),
-            row_index=idx,
-            raw_data=drow,
-        ))
+        base = {
+            'detail_no': str(df.get('detail_no', '')).strip(),
+            'goods_id': str(df.get('detail_goods_id', '')).strip(),
+            'sku_id': str(df.get('detail_sku_id', '')).strip(),
+            'sku': str(df.get('detail_sku', '')).strip(),
+            'barcode': str(df.get('detail_barcode', '')).strip(),
+            'goods_name': str(df.get('detail_goods_name', '')).strip(),
+            'spec': str(df.get('detail_spec', '')).strip(),
+            'unit': str(df.get('detail_unit', '')).strip(),
+            'qty': to_decimal(df.get('detail_qty')),
+            'unit_price': to_decimal(df.get('detail_unit_price')),
+            'subtotal': to_decimal(df.get('detail_subtotal')),
+            'discount': to_decimal(df.get('detail_discount')),
+            'discounted_subtotal': to_decimal(df.get('detail_discounted_subtotal')),
+            'paid_amount': to_decimal(df.get('detail_paid')),
+            'refund_amount': to_decimal(df.get('detail_refund')),
+            'refund_qty': to_decimal(df.get('detail_refund_qty')),
+            'owner_id': str(df.get('detail_owner_id', '')).strip(),
+            # 订单中心 xlsx：从该列解析每项单价/数量/小计
+            'sales_title': str(drow.get('销售标题') or ''),
+        }
+        for part in split_detail_values(base):
+            part.pop('sales_title', None)
+            pending_details.append(OrderDetail(row_index=row_index, raw_data=drow, **part))
+            row_index += 1
     order._pending_details = pending_details
 
     return order

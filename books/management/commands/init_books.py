@@ -83,6 +83,10 @@ LAKALA_MAPPINGS = {
         ('线上支付-退款额', 'refund_amount', [('sum_columns', {'columns': ['线上支付-退款额', '到货付款-退货额']})], 0),
         ('订单成本', 'cost_amount', [('to_decimal', {})], 0),
         ('实付额', 'paid_amount', [('to_decimal', {})], 20),
+        # 订单中心 xlsx（一行一单）复合列别名
+        ('总成本', 'cost_amount', [('to_decimal', {})], 10),
+        ('退货额', 'refund_amount', [('to_decimal', {})], 10),
+        ('客户Id', 'shop_name', [('trim', {})], 10),
         # —— 日期 ——
         ('下单时间', 'order_date', [('to_date', {})], 0),
         ('支付时间', 'payment_date', [('to_date', {})], 0),
@@ -145,10 +149,13 @@ LAKALA_MAPPINGS['lakala_order_api'] = (LAKALA_MAPPINGS['lakala_order'] +
 LAKALA_DETAIL_MAPPINGS = {
     'lakala_order': [
         ('明细Id', 'detail_no', [('none', {})], 0),
+        ('明细id', 'detail_no', [('none', {})], 10),  # 订单中心 xlsx
         ('商品Id', 'detail_goods_id', [('none', {})], 0),
         ('规格Id', 'detail_sku_id', [('none', {})], 0),
         ('SKU编码', 'detail_sku', [('none', {})], 0),
+        ('规格编码', 'detail_sku', [('none', {})], 10),  # 订单中心 xlsx
         ('条形码', 'detail_barcode', [('none', {})], 0),
+        ('条码', 'detail_barcode', [('none', {})], 10),  # 订单中心 xlsx
         ('商品名', 'detail_goods_name', [('none', {})], 0),
         ('销售标题', 'detail_spec', [('none', {})], 0),
         ('销售单位', 'detail_unit', [('none', {})], 0),
