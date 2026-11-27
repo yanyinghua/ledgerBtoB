@@ -3803,7 +3803,7 @@ class B2bShopLedgerTest(TestCase):
         up = SourceUpload.objects.create(source_type='lakala_order', file_name='backfill-test')
         raw = {
             'id': 'BACKFILL-TEST', '客户Id': '回填店铺', '订单总额': '100',
-            '订单实收款': '100', '总成本': '90', '总折扣': '5', '片区': '测试片区',
+            '商品总额': '105', '订单实收款': '100', '总成本': '90', '总折扣': '5', '片区': '测试片区',
             '明细id': 'X1，X2', '商品名': '商品甲，商品乙', '规格编码': 'K1，K2',
             '条码': 'B1，B2', '销售标题': '甲 ￥60.00/件 ×1件 ￥60.00  乙 ￥40.00/件 ×1件 ￥40.00',
         }
@@ -3813,6 +3813,7 @@ class B2bShopLedgerTest(TestCase):
                                  raw_row=rr, total_amount=100, paid_amount=100)
         call_command('backfill_order_raw_fields', verbosity=0)
         o.refresh_from_db()
+        self.assertEqual(o.goods_amount, 105)
         self.assertEqual(o.cost_amount, 90)
         self.assertEqual(o.discount_amount, 5)
         self.assertEqual(o.shop_name, '回填店铺')

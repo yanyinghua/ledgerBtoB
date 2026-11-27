@@ -62,6 +62,9 @@ class Command(BaseCommand):
         for o in orders:
             raw = o.raw_row.data or {}
             changed = []
+            goods = to_decimal(raw.get('商品总额'))
+            if not o.goods_amount and goods:
+                o.goods_amount = goods; changed.append('goods_amount')
             cost = to_decimal(raw.get('订单成本')) or to_decimal(raw.get('总成本'))
             if not o.cost_amount and cost:
                 o.cost_amount = cost; changed.append('cost_amount')
