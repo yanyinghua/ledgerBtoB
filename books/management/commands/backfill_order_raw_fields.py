@@ -7,7 +7,11 @@
 用法：
   python3 manage.py backfill_order_raw_fields --dry-run
   python3 manage.py backfill_order_raw_fields --username admin
+  python3 manage.py backfill_order_raw_fields --csv 订单.csv --xlsx 订单中心.xlsx
 """
+import csv
+
+import openpyxl
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -15,6 +19,33 @@ from django.db import transaction
 from books.models import Order, OrderDetail, log_operation
 from books.imports.utils import to_decimal
 from books.imports.lakala import split_detail_values
+
+
+def _load_source_heads(csv_path, xlsx_path):
+    """从原始文件按订单id读取表头字段，供无 raw_row 的历史订单回填。"""
+    heads = {}
+    if csv_path:
+        with open(csv_path, encoding='utf-8-sig', newline='') as f:
+            for row in csv.DictReader(f):
+                oid = str(row.get('订单Id') or '').strip()
+                if oid:
+                    heads.setdefault(oid, dict(row))
+    if xlsx_path:
+        wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+        ws = wb.active
+        it = ws.iter_rows(values_only=True)
+        hdr = [str(c).strip() if c is not None else '' for c in next(it)]
+        i_id = hdr.index('id') if 'id' in hdr else None
+        if i_id is not None:
+            for row in it:
+                oid = str(row[i_id]).strip() if i_id < len(row) and row[i_id] else ''
+                if not oid:
+                    continue
+                oid = oid.split('.')[0]
+                heads.setdefault(oid, {h: row[i] for i, h in enumerate(hdr)
+                                       if i < len(row) and h})
+        wb.close()
+    return heads
 
 
 class Command(BaseCommand):
@@ -25,6 +56,8 @@ class Command(BaseCommand):
         parser.add_argument('--username', default='', help='记为操作人的用户名（默认首个超管）')
         parser.add_argument('--repair', action='store_true',
                             help='修复历史回填中「无明细id的拆分行沿用首行金额」的错误')
+        parser.add_argument('--csv', default='', help='原始明细级 CSV，用于无 raw_row 的历史订单')
+        parser.add_argument('--xlsx', default='', help='订单中心 xlsx，用于无 raw_row 的历史订单')
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -37,8 +70,9 @@ class Command(BaseCommand):
             user = User.objects.filter(is_superuser=True).first()
 
         dry = options['dry_run']
+        source_heads = _load_source_heads(options['csv'], options['xlsx'])
         field_count = detail_count = repair_count = 0
-        orders = Order.objects.exclude(raw_row=None).select_related('raw_row')
+        orders = Order.objects.all().select_related('raw_row')
         if options['repair']:
             for o in orders:
                 ds = list(o.details.order_by('row_index'))
@@ -60,7 +94,10 @@ class Command(BaseCommand):
             if dry:
                 return
         for o in orders:
-            raw = o.raw_row.data or {}
+            from_source = not o.raw_row_id
+            raw = (o.raw_row.data or {}) if o.raw_row_id else source_heads.get(o.external_order_no, {})
+            if not raw:
+                continue
             changed = []
             goods = to_decimal(raw.get('商品总额'))
             if not o.goods_amount and goods:
@@ -88,7 +125,8 @@ class Command(BaseCommand):
             if changed:
                 field_count += 1
 
-            if o.details.exists():
+            # 无 raw_row 的历史订单明细已由 rebuild_order_details_from_csv 重建，不再补建
+            if o.details.exists() or from_source:
                 continue
             base = {
                 'detail_no': str(raw.get('明细id') or raw.get('明细Id') or '').strip(),

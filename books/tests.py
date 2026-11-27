@@ -1,5 +1,6 @@
 import csv
 import os
+import tempfile
 import datetime
 from unittest import skipIf
 from django.test import TestCase, Client, RequestFactory
@@ -3911,6 +3912,26 @@ class B2bShopLedgerTest(TestCase):
         self.assertEqual(r.edited_by, self.admin)
         self.assertIsNotNone(r.edited_at)
         self.assertTrue(OperationLog.objects.filter(action='编辑回款店铺名称').exists())
+
+    def test_backfill_head_fields_from_source_csv(self):
+        o = Order.objects.create(source_type='lakala_order',
+                                 external_order_no='CSVHEAD-TEST',
+                                 total_amount=100, paid_amount=100)
+        fd, path = tempfile.mkstemp(suffix='.csv')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8-sig', newline='') as fh:
+                w = csv.DictWriter(fh, fieldnames=['订单Id', '商品总额', '订单成本',
+                                                   '总折扣', '客户名称', '片区'])
+                w.writeheader()
+                w.writerow({'订单Id': 'CSVHEAD-TEST', '商品总额': '105', '订单成本': '90',
+                            '总折扣': '5', '客户名称': '源文件店铺', '片区': '源文件片区'})
+            call_command('backfill_order_raw_fields', '--csv', path, verbosity=0)
+        finally:
+            os.remove(path)
+        o.refresh_from_db()
+        self.assertEqual(o.goods_amount, 105)
+        self.assertEqual(o.cost_amount, 90)
+        self.assertEqual(o.shop_name, '源文件店铺')
 
     def test_import_list_empty_status_label(self):
         SourceUpload.objects.create(source_type='lakala_order', file_name='dup.xlsx',
