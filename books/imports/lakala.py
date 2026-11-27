@@ -162,6 +162,12 @@ def split_detail_values(d):
         p['barcode'] = barcodes[i] if i < len(barcodes) else ''
         if i < len(sales):
             p['unit_price'], p['qty'], p['subtotal'] = sales[i]
+        elif i > 0:
+            # 合并行没有逐项金额时可解析的销售标题：只有第一行的数量/单价/小计
+            # 属于原始首行，后续拆分行不能沿用，否则会重复计入金额。
+            p['qty'] = to_decimal(0)
+            p['unit_price'] = to_decimal(0)
+            p['subtotal'] = to_decimal(0)
         parts.append(p)
     return parts
 

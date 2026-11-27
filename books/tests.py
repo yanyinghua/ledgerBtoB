@@ -3788,6 +3788,14 @@ class B2bShopLedgerTest(TestCase):
         self.assertEqual(parts[1]['goods_name'], '商品B')
         self.assertEqual(parts[1]['unit_price'], 200)
         self.assertEqual(parts[1]['subtotal'], 200)
+        # 合并行无逐项金额时，后续拆分行不能沿用第一行金额
+        merged = split_detail_values({
+            'goods_name': '商品A，商品B', 'detail_no': 'D1',
+            'qty': 2, 'unit_price': 10, 'subtotal': 20,
+        })
+        self.assertEqual(merged[0]['subtotal'], 20)
+        self.assertEqual(merged[1]['subtotal'], 0)
+        self.assertEqual(merged[1]['qty'], 0)
 
     def test_backfill_order_fields_and_details_from_raw(self):
         up = SourceUpload.objects.create(source_type='lakala_order', file_name='backfill-test')

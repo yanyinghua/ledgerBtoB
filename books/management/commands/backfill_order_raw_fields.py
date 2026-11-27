@@ -23,6 +23,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true', help='仅预览，不写库')
         parser.add_argument('--username', default='', help='记为操作人的用户名（默认首个超管）')
+        parser.add_argument('--repair', action='store_true',
+                            help='修复历史回填中「无明细id的拆分行沿用首行金额」的错误')
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -35,8 +37,28 @@ class Command(BaseCommand):
             user = User.objects.filter(is_superuser=True).first()
 
         dry = options['dry_run']
-        field_count = detail_count = 0
+        field_count = detail_count = repair_count = 0
         orders = Order.objects.exclude(raw_row=None).select_related('raw_row')
+        if options['repair']:
+            for o in orders:
+                ds = list(o.details.order_by('row_index'))
+                if len(ds) < 2:
+                    continue
+                first = ds[0]
+                for d in ds[1:]:
+                    if (not d.detail_no and d.qty == first.qty and
+                            d.unit_price == first.unit_price and
+                            d.subtotal == first.subtotal and
+                            (d.qty or d.unit_price or d.subtotal)):
+                        if not dry:
+                            d.qty = d.unit_price = d.subtotal = 0
+                            d.save(update_fields=['qty', 'unit_price', 'subtotal'])
+                        repair_count += 1
+            self.stdout.write(self.style.SUCCESS(
+                f'修复重复金额明细行：{repair_count} 行'
+                + ('（dry-run，未写库）' if dry else '')))
+            if dry:
+                return
         for o in orders:
             raw = o.raw_row.data or {}
             changed = []
